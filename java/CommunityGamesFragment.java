@@ -102,7 +102,7 @@ public class CommunityGamesFragment extends Fragment {
         }
 
         // Criar dialog
-        AlertDialog.Builder builder = new AlertDialog.Builder(getContext(), com.google.android.material.R.style.ThemeOverlay_Material3_AlertDialog);
+        AlertDialog.Builder builder = new AlertDialog.Builder(getContext());
         View dialogView = LayoutInflater.from(getContext()).inflate(R.layout.dialog_upload_game, null);
         builder.setView(dialogView);
 
