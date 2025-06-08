@@ -26,13 +26,16 @@ import org.json.JSONObject;
 import java.io.BufferedReader;
 import java.io.File;
 import java.io.FileOutputStream;
+import java.io.IOException;
 import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.io.OutputStream;
 import java.net.HttpURLConnection;
 import java.net.URL;
+import java.security.MessageDigest;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import android.util.Base64; // Added for MD5
 
 public class UploadService extends Service {
 
@@ -47,6 +50,11 @@ public class UploadService extends Service {
     private ExecutorService executor;
     private PowerManager.WakeLock wakeLock;
     private UploadRepository uploadRepository;
+
+    @FunctionalInterface
+    interface Md5ProgressListener {
+        void onProgress(int progress);
+    }
 
     @Override
     public void onCreate() {
@@ -127,59 +135,120 @@ public class UploadService extends Service {
             wakeLock.acquire();
         }
 
-        File tempFile = null;
+        // File tempFile = null; // Removed tempFile logic
 
         try {
-            updateNotification("Preparando arquivo " + uploadStatus.getGameName() + "...", 5);
-            tempFile = copyUriToTempFile(fileUri, uploadStatus.getFileName());
+            // Phase 1: Calculate MD5
+            updateNotification("Calculando hash de " + uploadStatus.getGameName() + "...", 0);
+            String md5Hash;
+            try {
+                md5Hash = calculateMd5FromUri(fileUri, uploadStatus.getFileSize(), uploadStatus.getGameName(), progress -> {
+                    updateNotification("Calculando hash de " + uploadStatus.getGameName() + "...", progress);
+                });
 
-            if (tempFile == null) {
-                String error = "Erro ao preparar arquivo para " + uploadStatus.getGameName();
-                Log.e("UploadService", error + " (tempFile is null)");
+                if (md5Hash == null) {
+                    String error = "Erro ao calcular MD5 para " + uploadStatus.getGameName() + " (hash nulo)";
+                    Log.e("UploadService", error);
+                    showErrorNotification(error);
+                    uploadStatus.setStatus(UploadStatus.Status.ERROR);
+                    uploadStatus.setErrorMessage(error);
+                    uploadRepository.updateUpload(uploadStatus);
+                    sendUploadBroadcast(ACTION_UPLOAD_ERROR, uploadStatus.getId(), uploadStatus.getGameName(), uploadStatus.getFileName(), uploadStatus.getFileSize(), 0, error, uploadStatus.getUploadedBytes());
+                    stopSelf(); // Stop service if MD5 calculation fails critically
+                    return;
+                }
+            } catch (Exception e) {
+                String error = "Erro ao calcular MD5 para " + uploadStatus.getGameName() + ": " + e.getMessage();
+                Log.e("UploadService", error, e);
                 showErrorNotification(error);
                 uploadStatus.setStatus(UploadStatus.Status.ERROR);
                 uploadStatus.setErrorMessage(error);
                 uploadRepository.updateUpload(uploadStatus);
                 sendUploadBroadcast(ACTION_UPLOAD_ERROR, uploadStatus.getId(), uploadStatus.getGameName(), uploadStatus.getFileName(), uploadStatus.getFileSize(), 0, error, uploadStatus.getUploadedBytes());
+                stopSelf(); // Stop service if MD5 calculation fails
                 return;
             }
 
+            // Phase 2: Upload the file
             InternetArchiveUploader uploader = new InternetArchiveUploader(accessKey, secretKey, itemIdentifier);
-            final File finalTempFile = tempFile;
+            // final File finalTempFile = tempFile; // Removed
 
-            uploader.uploadFile(finalTempFile, uploadStatus.getFileName(), uploadStatus.getUploadedBytes(), new InternetArchiveUploader.UploadCallback() {
-                @Override
-                public void onProgress(long uploadedBytes, int progress) {
-                    uploadStatus.setUploadedBytes(uploadedBytes);
-                    uploadStatus.setProgress(progress);
-                    uploadStatus.setStatus(UploadStatus.Status.UPLOADING);
-                    uploadRepository.updateUpload(uploadStatus);
-                    updateNotification("Enviando " + uploadStatus.getGameName() + "...", progress);
-                    sendUploadBroadcast(ACTION_UPLOAD_PROGRESS, uploadStatus.getId(), uploadStatus.getGameName(), uploadStatus.getFileName(), uploadStatus.getFileSize(), progress, null, uploadedBytes);
+            InputStream inputStream = null;
+            try {
+                inputStream = getContentResolver().openInputStream(fileUri);
+                if (inputStream == null) {
+                    throw new IOException("Não foi possível abrir InputStream para URI: " + fileUri);
                 }
 
-                @Override
-                public void onSuccess(String fileUrl) {
-                    sendToPhpApi(uploadStatus, fileUrl, finalTempFile);
-                }
+                if (uploadStatus.getUploadedBytes() > 0) {
+                    long skipped = inputStream.skip(uploadStatus.getUploadedBytes());
+                    if (skipped < uploadStatus.getUploadedBytes()) {
+                        Log.w("UploadService", "Não foi possível pular todos os bytes para " + uploadStatus.getGameName() + ". Solicitado: " + uploadStatus.getUploadedBytes() + ", Pulado: " + skipped + ". Reiniciando upload.");
+                        // Optionally, reset uploadedBytes and restart the upload from scratch
+                        uploadStatus.setUploadedBytes(0);
+                        uploadStatus.setProgress(0);
+                        // Re-open stream if necessary or seek to 0 if supported, though Content URI streams usually don't support seek.
+                        // For simplicity here, we might just let it proceed and upload from where skip landed, or fail.
+                        // A more robust solution might involve restarting the upload from byte 0 if skip fails significantly.
+                        // For now, we'll log and proceed, which might lead to issues if the skip was incomplete.
+                        // Or better, fail:
+                        // throw new IOException("Falha ao pular bytes para retomar o upload de " + uploadStatus.getGameName());
+                        // For this iteration, let's assume skip works or upload needs to restart if it doesn't.
+                        // If skip is not exact, it's safer to restart or fail. Let's restart for now.
+                        inputStream.close(); // Close the current stream
+                        inputStream = getContentResolver().openInputStream(fileUri); // Reopen
+                        uploadStatus.setUploadedBytes(0); // Reset progress
+                        uploadStatus.setProgress(0);
+                        uploadRepository.updateUpload(uploadStatus); // Persist reset
+                        Log.i("UploadService", "Upload de " + uploadStatus.getGameName() + " reiniciado devido a falha no skip.");
 
-                @Override
-                public void onError(String error) {
-                    Log.e("UploadService", "Erro no upload (uploader.uploadFile callback) de " + uploadStatus.getGameName() + ": " + error);
-                    String errorMsg = "Erro no upload de " + uploadStatus.getGameName() + ": " + error;
-                    showErrorNotification(errorMsg);
-                    uploadStatus.setStatus(UploadStatus.Status.ERROR);
-                    uploadStatus.setErrorMessage(errorMsg);
-                    uploadRepository.updateUpload(uploadStatus);
-                    sendUploadBroadcast(ACTION_UPLOAD_ERROR, uploadStatus.getId(), uploadStatus.getGameName(), uploadStatus.getFileName(), uploadStatus.getFileSize(), 0, errorMsg, uploadStatus.getUploadedBytes());
-                    if (finalTempFile != null && finalTempFile.exists()) {
-                        finalTempFile.delete();
                     }
-                    stopSelf();
                 }
-            });
 
-        } catch (Throwable t) {
+                final InputStream finalInputStream = inputStream; // For use in callback
+                uploader.uploadFile(finalInputStream, uploadStatus.getFileSize(), uploadStatus.getFileName(), md5Hash, uploadStatus.getUploadedBytes(), new InternetArchiveUploader.UploadCallback() {
+                    @Override
+                    public void onProgress(long uploadedBytes, int progress) {
+                        uploadStatus.setUploadedBytes(uploadedBytes);
+                        uploadStatus.setProgress(progress);
+                        uploadStatus.setStatus(UploadStatus.Status.UPLOADING);
+                        uploadRepository.updateUpload(uploadStatus);
+                        updateNotification("Enviando " + uploadStatus.getGameName() + "...", progress);
+                        sendUploadBroadcast(ACTION_UPLOAD_PROGRESS, uploadStatus.getId(), uploadStatus.getGameName(), uploadStatus.getFileName(), uploadStatus.getFileSize(), progress, null, uploadedBytes);
+                    }
+
+                    @Override
+                    public void onSuccess(String fileUrl) {
+                        // sendToPhpApi(uploadStatus, fileUrl, finalTempFile); // finalTempFile removed
+                        sendToPhpApi(uploadStatus, fileUrl);
+                    }
+
+                    @Override
+                    public void onError(String error) {
+                        Log.e("UploadService", "Erro no upload (uploader.uploadFile callback) de " + uploadStatus.getGameName() + ": " + error);
+                        String errorMsg = "Erro no upload de " + uploadStatus.getGameName() + ": " + error;
+                        showErrorNotification(errorMsg);
+                        uploadStatus.setStatus(UploadStatus.Status.ERROR);
+                        uploadStatus.setErrorMessage(errorMsg);
+                        uploadRepository.updateUpload(uploadStatus);
+                        sendUploadBroadcast(ACTION_UPLOAD_ERROR, uploadStatus.getId(), uploadStatus.getGameName(), uploadStatus.getFileName(), uploadStatus.getFileSize(), 0, errorMsg, uploadStatus.getUploadedBytes());
+                        // if (finalTempFile != null && finalTempFile.exists()) { // Removed
+                        //    finalTempFile.delete();
+                        // }
+                        stopSelf();
+                    }
+                });
+            } finally {
+                if (inputStream != null) {
+                    try {
+                        inputStream.close();
+                    } catch (IOException e) {
+                        Log.e("UploadService", "Erro ao fechar inputStream para " + uploadStatus.getGameName() + ": " + e.getMessage(), e);
+                    }
+                }
+            }
+
+        } catch (Throwable t) { // This outer catch handles MD5 calculation exceptions and InputStream opening issues before uploader.uploadFile
             Log.e("UploadService", "Erro geral EXCEPTION/THROWABLE no upload de " + uploadStatus.getGameName() + ": " + t.getMessage(), t);
             String error = "Erro crítico no upload de " + uploadStatus.getGameName() + ": " + t.getMessage();
             showErrorNotification(error);
@@ -187,9 +256,9 @@ public class UploadService extends Service {
             uploadStatus.setErrorMessage(error);
             uploadRepository.updateUpload(uploadStatus);
             sendUploadBroadcast(ACTION_UPLOAD_ERROR, uploadStatus.getId(), uploadStatus.getGameName(), uploadStatus.getFileName(), uploadStatus.getFileSize(), 0, error, uploadStatus.getUploadedBytes());
-            if (tempFile != null && tempFile.exists()) {
-                tempFile.delete();
-            }
+            // if (tempFile != null && tempFile.exists()) { // Removed
+            //    tempFile.delete();
+            // }
             stopSelf();
         } finally {
             if (wakeLock != null && wakeLock.isHeld()) {
@@ -199,31 +268,56 @@ public class UploadService extends Service {
         }
     }
 
-    private File copyUriToTempFile(Uri uri, String fileName) {
+    // Removed copyUriToTempFile method
+
+    private String calculateMd5FromUri(Uri fileUri, long fileSize, String gameName, Md5ProgressListener listener) throws Exception {
+        if (fileSize == 0) {
+            Log.w("UploadService", "File size is 0 for " + gameName + ", cannot calculate MD5 meaningfully. Returning empty hash.");
+            // Consider a specific non-null hash for zero-byte files if your backend expects one,
+            // or ensure this case is handled as an error before calling.
+            // For now, returning a common MD5 for empty string: "d41d8cd98f00b204e9800998ecf8427e"
+            // This might not be what Internet Archive expects for an empty file's Content-MD5.
+            // It's safer to prevent uploads of 0-byte files or have a specific handling for them.
+            // For this implementation, let's return null and let the caller handle it as an error.
+            // listener.onProgress(100); // Or 0, depending on desired UX for 0-byte files
+            return null; // Or throw new IllegalArgumentException("File size is 0");
+        }
+
+        InputStream inputStream = null;
         try {
-            InputStream inputStream = getContentResolver().openInputStream(uri);
-            if (inputStream == null) return null;
-
-            File tempFile = new File(getCacheDir(), fileName);
-            FileOutputStream outputStream = new FileOutputStream(tempFile);
-
-            byte[] buffer = new byte[8192];
-            int bytesRead;
-            while ((bytesRead = inputStream.read(buffer)) != -1) {
-                outputStream.write(buffer, 0, bytesRead);
+            inputStream = getContentResolver().openInputStream(fileUri);
+            if (inputStream == null) {
+                throw new IOException("Não foi possível abrir InputStream para URI: " + fileUri);
             }
 
-            inputStream.close();
-            outputStream.close();
+            MessageDigest md = MessageDigest.getInstance("MD5");
+            byte[] buffer = new byte[8192];
+            int bytesRead;
+            long totalBytesRead = 0;
 
-            return tempFile;
-        } catch (Exception e) {
-            Log.e("UploadService", "Erro ao copiar arquivo: " + e.getMessage());
-            return null;
+            while ((bytesRead = inputStream.read(buffer)) != -1) {
+                md.update(buffer, 0, bytesRead);
+                totalBytesRead += bytesRead;
+                if (fileSize > 0) { // Avoid division by zero if somehow fileSize was 0 despite earlier check
+                    int progress = (int) ((totalBytesRead * 100) / fileSize);
+                    listener.onProgress(progress);
+                }
+            }
+            byte[] digest = md.digest();
+            return Base64.encodeToString(digest, Base64.NO_WRAP);
+        } finally {
+            if (inputStream != null) {
+                try {
+                    inputStream.close();
+                } catch (IOException e) {
+                    Log.e("UploadService", "Erro ao fechar inputStream durante cálculo de MD5 para " + gameName + ": " + e.getMessage());
+                }
+            }
         }
     }
 
-    private void sendToPhpApi(UploadStatus uploadStatus, String gameUrl, File tempFile) {
+
+    private void sendToPhpApi(UploadStatus uploadStatus, String gameUrl) { // File tempFile parameter removed
         try {
             updateNotification("Finalizando upload de " + uploadStatus.getGameName() + "...", 95);
 
@@ -278,7 +372,7 @@ public class UploadService extends Service {
             }
 
             connection.disconnect();
-            tempFile.delete();
+            // tempFile.delete(); // Removed
 
         } catch (Exception e) {
             Log.e("UploadService", "Erro na API PHP para " + uploadStatus.getGameName() + ": " + e.getMessage());
@@ -288,7 +382,7 @@ public class UploadService extends Service {
             uploadStatus.setErrorMessage(error);
             uploadRepository.updateUpload(uploadStatus);
             sendUploadBroadcast(ACTION_UPLOAD_ERROR, uploadStatus.getId(), uploadStatus.getGameName(), uploadStatus.getFileName(), uploadStatus.getFileSize(), 0, e.getMessage(), uploadStatus.getUploadedBytes());
-            tempFile.delete();
+            // tempFile.delete(); // Removed
         }
 
         stopSelf();

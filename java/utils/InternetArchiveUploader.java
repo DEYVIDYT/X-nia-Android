@@ -8,6 +8,8 @@ import java.io.BufferedReader;
 import java.io.DataOutputStream;
 import java.io.File;
 import java.io.FileInputStream;
+import java.io.IOException;
+import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.net.HttpURLConnection;
 import java.net.URL;
@@ -38,21 +40,21 @@ public class InternetArchiveUploader {
         void onError(String error);
     }
 
-    public void uploadFile(File file, String fileName, long startByte, UploadCallback callback) {
+    // New method signature
+    public void uploadFile(InputStream inputStream, long fileSize, String fileName, String precalculatedMd5, long streamStartOffset, UploadCallback callback) {
         try {
             String bucketName = itemIdentifier;
             String objectKey = fileName;
-            
+
             SimpleDateFormat dateFormat = new SimpleDateFormat("EEE, dd MMM yyyy HH:mm:ss 'GMT'", Locale.US);
             dateFormat.setTimeZone(TimeZone.getTimeZone("GMT"));
             String timestamp = dateFormat.format(new Date());
 
-            String md5Hash = calculateMD5(file);
+            // MD5 is now precalculated
+            // String md5Hash = calculateMD5(file);
 
-            String stringToSign = "PUT\n" + md5Hash + "\napplication/octet-stream\n" + timestamp + "\n/" + bucketName + "/" + objectKey;
-
+            String stringToSign = "PUT\n" + precalculatedMd5 + "\napplication/octet-stream\n" + timestamp + "\n/" + bucketName + "/" + objectKey;
             String signature = generateSignature(stringToSign, secretKey);
-
             String uploadUrl = "https://s3.us.archive.org/" + bucketName + "/" + objectKey;
 
             URL url = new URL(uploadUrl);
@@ -62,32 +64,36 @@ public class InternetArchiveUploader {
             connection.setRequestProperty("Authorization", "LOW " + accessKey + ":" + signature);
             connection.setRequestProperty("Date", timestamp);
             connection.setRequestProperty("Content-Type", "application/octet-stream");
-            connection.setRequestProperty("Content-MD5", md5Hash);
-            connection.setRequestProperty("Content-Length", String.valueOf(file.length()));
+            connection.setRequestProperty("Content-MD5", precalculatedMd5); // Use precalculatedMd5
 
-            if (startByte > 0) {
-                connection.setRequestProperty("Content-Range", "bytes " + startByte + "-" + (file.length() - 1) + "/" + file.length());
+            if (streamStartOffset > 0) {
+                connection.setRequestProperty("Content-Range", "bytes " + streamStartOffset + "-" + (fileSize - 1) + "/" + fileSize);
+                connection.setRequestProperty("Content-Length", String.valueOf(fileSize - streamStartOffset));
+            } else {
+                connection.setRequestProperty("Content-Length", String.valueOf(fileSize));
             }
 
-            DataOutputStream outputStream = new DataOutputStream(connection.getOutputStream());
-            FileInputStream fileInputStream = new FileInputStream(file);
-            fileInputStream.skip(startByte);
-            
-            byte[] buffer = new byte[8192];
+            DataOutputStream dos = new DataOutputStream(connection.getOutputStream());
+            // FileInputStream fileInputStream = new FileInputStream(file); // Replaced by inputStream parameter
+            // fileInputStream.skip(startByte); // streamStartOffset is assumed to be handled by caller
+
+            byte[] buffer = new byte[8192]; // Or a suitable buffer size
             int bytesRead;
-            long totalBytesRead = startByte;
-            long fileSize = file.length();
+            long totalBytesReadForThisUploadSession = 0; // For progress within this specific upload call
             
-            while ((bytesRead = fileInputStream.read(buffer)) != -1) {
-                outputStream.write(buffer, 0, bytesRead);
-                totalBytesRead += bytesRead;
+            while ((bytesRead = inputStream.read(buffer)) != -1) {
+                dos.write(buffer, 0, bytesRead);
+                totalBytesReadForThisUploadSession += bytesRead;
                 
-                int progress = (int) ((totalBytesRead * 100) / fileSize);
-                callback.onProgress(totalBytesRead, progress);
+                // Progress calculation should use 'fileSize' (total size of the file)
+                // and 'streamStartOffset + totalBytesReadForThisUploadSession' (total bytes effectively uploaded)
+                int progress = (int) (((streamStartOffset + totalBytesReadForThisUploadSession) * 100) / fileSize);
+                callback.onProgress(streamStartOffset + totalBytesReadForThisUploadSession, progress);
             }
             
-            fileInputStream.close();
-            outputStream.close();
+            // inputStream.close(); // Closing the stream should be the responsibility of the caller
+            dos.flush();
+            dos.close();
 
             int responseCode = connection.getResponseCode();
             if (responseCode == 200 || responseCode == 201) {
@@ -121,7 +127,11 @@ public class InternetArchiveUploader {
         }
     }
 
-    private String calculateMD5(File file) throws Exception {
+    // This method is removed, its logic moved to calculateAndGetMd5ForInternalFile if needed for createItem
+    // private String calculateMD5(File file) throws Exception { ... }
+
+    // New helper method for internal MD5 calculation, e.g., for metadata in createItem
+    private String calculateAndGetMd5ForInternalFile(File file) throws Exception {
         MessageDigest md = MessageDigest.getInstance("MD5");
         FileInputStream fis = new FileInputStream(file);
         
@@ -162,25 +172,43 @@ public class InternetArchiveUploader {
             writer.write(metadataContent);
             writer.close();
 
-            uploadFile(tempFile, itemIdentifier + "_meta.xml", 0, new UploadCallback() {
-                @Override
-                public void onProgress(long uploadedBytes, int progress) {
-                }
+            FileInputStream fis = null;
+            try {
+                String metadataMd5 = calculateAndGetMd5ForInternalFile(tempFile);
+                fis = new FileInputStream(tempFile);
+                uploadFile(fis, tempFile.length(), itemIdentifier + "_meta.xml", metadataMd5, 0, new UploadCallback() {
+                    @Override
+                    public void onProgress(long uploadedBytes, int progress) {
+                        // Metadata upload progress usually not critical to expose, but can be logged
+                    }
 
-                @Override
-                public void onSuccess(String fileUrl) {
-                    tempFile.delete();
-                    callback.onSuccess("Item criado com sucesso");
-                }
+                    @Override
+                    public void onSuccess(String fileUrl) {
+                        tempFile.delete();
+                        callback.onSuccess("Item criado com sucesso");
+                    }
 
-                @Override
-                public void onError(String error) {
-                    tempFile.delete();
-                    callback.onError(error);
+                    @Override
+                    public void onError(String error) {
+                        tempFile.delete();
+                        callback.onError(error);
+                    }
+                });
+            } catch (Exception e) { // Catch exceptions from MD5 calculation or FileInputStream creation
+                tempFile.delete(); // Ensure tempFile is deleted on error
+                callback.onError("Erro ao preparar upload de metadados: " + e.getMessage());
+            } finally {
+                if (fis != null) {
+                    try {
+                        fis.close();
+                    } catch (IOException e) {
+                        // Log this error, but the original error (if any) is more important
+                        System.err.println("Erro ao fechar FileInputStream para metadados: " + e.getMessage());
+                    }
                 }
-            });
+            }
 
-        } catch (Exception e) {
+        } catch (Exception e) { // Catch exceptions from metadata JSON creation or temp file operations
             callback.onError("Erro ao criar item: " + e.getMessage());
         }
     }
