@@ -134,9 +134,10 @@ public class CommunityGamesFragment extends Fragment {
         });
 
         btnSelectFile.setOnClickListener(v -> {
-            Intent intent = new Intent(Intent.ACTION_GET_CONTENT);
+            Intent intent = new Intent(Intent.ACTION_OPEN_DOCUMENT); // Changed to ACTION_OPEN_DOCUMENT
             intent.setType("application/zip");
             intent.addCategory(Intent.CATEGORY_OPENABLE);
+            intent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION); // Added flag for persistable permission
             startActivityForResult(intent, PICK_FILE_REQUEST);
         });
 
@@ -187,7 +188,36 @@ public class CommunityGamesFragment extends Fragment {
         if (requestCode == PICK_FILE_REQUEST && resultCode == Activity.RESULT_OK && data != null) {
             selectedFileUri = data.getData();
             if (selectedFileUri != null) {
-                getFileInfo(selectedFileUri);
+                try {
+                    final int takeFlags = Intent.FLAG_GRANT_READ_URI_PERMISSION;
+                    // Attempt to take persistable URI permission
+                    requireContext().getContentResolver().takePersistableUriPermission(selectedFileUri, takeFlags);
+                    // If successful, proceed to get file info
+                    getFileInfo(selectedFileUri);
+                } catch (SecurityException e) {
+                    android.util.Log.e("CommunityGamesFragment", "Failed to take persistable URI permission for: " + selectedFileUri, e);
+                    Toast.makeText(getContext(), "Erro: Não foi possível obter permissão de acesso permanente ao arquivo. Tente selecionar o arquivo novamente.", Toast.LENGTH_LONG).show();
+
+                    // Reset file selection state as permission was not granted
+                    this.selectedFileUri = null;
+                    this.selectedFileName = null;
+                    this.selectedFileSize = 0;
+                    if (this.tvDialogSelectedFile != null) {
+                         this.tvDialogSelectedFile.setText("Falha ao obter permissão do arquivo.");
+                    }
+                    if (this.etDialogGameName != null && this.btnDialogUpload != null) { // Check for null if dialog might be dismissed
+                        updateUploadButtonState(); // Disable upload button
+                    }
+                }
+            } else {
+                // Handle case where selectedFileUri is null (though data.getData() should provide it if resultCode is OK)
+                if (this.tvDialogSelectedFile != null) {
+                  this.tvDialogSelectedFile.setText("Nenhum arquivo selecionado.");
+                }
+                // Ensure button state is updated if URI is null
+                if (this.etDialogGameName != null && this.btnDialogUpload != null) {
+                    updateUploadButtonState();
+                }
             }
         }
     }
