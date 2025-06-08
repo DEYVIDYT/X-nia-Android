@@ -138,9 +138,7 @@ public class UploadService extends Service {
             Log.d("UploadService", "Acquiring WakeLock for upload: " + uploadStatus.getGameName());
             wakeLock.acquire();
         }
-
-            wakeLock.acquire();
-        }
+        // Removed extra closing brace and duplicate wakeLock.acquire() call from here
 
         String filePath = null;
         if ("com.android.providers.downloads.documents".equals(fileUri.getAuthority())) {
@@ -183,15 +181,10 @@ public class UploadService extends Service {
                 if ("com.android.providers.downloads.documents".equals(fileUri.getAuthority())) {
                     android.util.Log.w("UploadService", "Download URI: No direct path, falling back to copy-to-temp-file for: " + fileUri.toString());
                     File tempFile = copyUriToTempFileInternal(fileUri, uploadStatus.getFileName());
-                    if (tempFile == null) { // Should be handled by exception in copyUriToTempFileInternal
-                        throw new Exception("Falha ao copiar arquivo (Downloads) para cache temporário. TempFile é null.");
-                    }
+                    // copyUriToTempFileInternal throws IOException if it fails critically, so tempFile should not be null if no exception.
                     tempFileForDeletionHolder[0] = tempFile;
 
                     updateNotification("Calculando hash (copia) de " + uploadStatus.getGameName() + "...", 0);
-                    // Use tempFile.length() for MD5 calculation and for the upload if original fileSize is from a URI that might not be accurate after copy
-                    // However, InternetArchiveUploader expects total original file size for metadata if that's what uploadStatus.getFileSize() represents.
-                    // For now, let's use tempFile.length() for MD5 calculation progress, but InternetArchiveUploader will still get original total size.
                     md5Hash = calculateMd5FromFile(tempFile, tempFile.length(), uploadStatus.getGameName(), progress -> {
                         updateNotification("Calculando hash (copia) de " + uploadStatus.getGameName() + "...", progress);
                     });
@@ -215,15 +208,15 @@ public class UploadService extends Service {
                         updateNotification("Calculando hash de " + uploadStatus.getGameName() + "...", progress);
                     });
                     inputStreamForUpload = getContentResolver().openInputStream(fileUri);
-                     if (inputStreamForUpload == null) { // Check if stream is null
+                     if (inputStreamForUpload == null) {
                         throw new IOException("Não foi possível abrir InputStream para URI (não-Downloads): " + fileUri);
                     }
                     if (uploadStatus.getUploadedBytes() > 0) {
                         long skipped = inputStreamForUpload.skip(uploadStatus.getUploadedBytes());
                         if (skipped != uploadStatus.getUploadedBytes()) {
                               try { inputStreamForUpload.close(); } catch (java.io.IOException e) { /* ignore */ }
-                              inputStreamForUpload = getContentResolver().openInputStream(fileUri); // Reopen
-                               if (inputStreamForUpload == null) { // Check again
+                              inputStreamForUpload = getContentResolver().openInputStream(fileUri);
+                               if (inputStreamForUpload == null) {
                                   throw new IOException("Não foi possível reabrir InputStream para URI (não-Downloads) após falha no skip: " + fileUri);
                               }
                               uploadStatus.setUploadedBytes(0);
