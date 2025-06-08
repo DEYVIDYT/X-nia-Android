@@ -1,5 +1,6 @@
 package com.winlator.Download.adapter;
 
+import android.util.Log;
 import android.view.LayoutInflater;
 import android.view.View;
 import android.view.ViewGroup;
@@ -36,6 +37,7 @@ public class UploadMonitorAdapter extends RecyclerView.Adapter<UploadMonitorAdap
     @Override
     public void onBindViewHolder(@NonNull ViewHolder holder, int position) {
         UploadStatus upload = uploadsList.get(position);
+        Log.d("UploadMonitorAdapter", "Binding view for: " + upload.getGameName() + ", Progress: " + upload.getProgress() + ", Status: " + upload.getStatus());
         
         holder.tvGameName.setText(upload.getGameName());
         holder.tvFileName.setText(upload.getFileName());
@@ -49,17 +51,21 @@ public class UploadMonitorAdapter extends RecyclerView.Adapter<UploadMonitorAdap
         if (upload.getStatus() == UploadStatus.Status.UPLOADING) {
             holder.progressBar.setVisibility(View.VISIBLE);
             holder.progressBar.setProgress(upload.getProgress());
-            holder.tvStatus.setText(upload.getStatusText() + " " + upload.getProgress() + "%");
             holder.tvStatus.setTextColor(ContextCompat.getColor(holder.itemView.getContext(), android.R.color.holo_blue_dark));
         } else {
             holder.progressBar.setVisibility(View.GONE);
-            holder.tvStatus.setText(upload.getStatusText());
+            // Colors for other states
             if (upload.getStatus() == UploadStatus.Status.COMPLETED) {
                 holder.tvStatus.setTextColor(ContextCompat.getColor(holder.itemView.getContext(), android.R.color.holo_green_dark));
             } else if (upload.getStatus() == UploadStatus.Status.ERROR) {
                 holder.tvStatus.setTextColor(ContextCompat.getColor(holder.itemView.getContext(), android.R.color.holo_red_dark));
+            } else {
+                // Default color for PENDING or other states if any
+                holder.tvStatus.setTextColor(ContextCompat.getColor(holder.itemView.getContext(), android.R.color.tab_indicator_text)); // Example default
             }
         }
+        // Set status text for all states after specific configurations
+        holder.tvStatus.setText(upload.getStatusText());
     }
 
     @Override

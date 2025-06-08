@@ -5,6 +5,7 @@ import android.content.Context;
 import android.content.Intent;
 import android.content.IntentFilter;
 import android.os.Bundle;
+import android.util.Log;
 import android.view.MenuItem;
 
 import androidx.appcompat.app.AppCompatActivity;
@@ -90,6 +91,7 @@ public class UploadMonitorActivity extends AppCompatActivity {
         upload.setProgress(0);
 
         uploadsList.add(0, upload);
+        Log.d("UploadMonitorActivity", "Upload STARTED: game=" + gameName + ", file=" + fileName + ", size=" + fileSize + ". List size: " + uploadsList.size());
         adapter.notifyItemInserted(0);
         recyclerView.scrollToPosition(0);
     }
@@ -97,14 +99,21 @@ public class UploadMonitorActivity extends AppCompatActivity {
     private void handleUploadProgress(Intent intent) {
         String gameName = intent.getStringExtra("game_name");
         int progress = intent.getIntExtra("progress", 0);
+        Log.d("UploadMonitorActivity", "Handling UPLOAD_PROGRESS: game=" + gameName + ", progress=" + progress);
+        boolean found = false;
 
         for (int i = 0; i < uploadsList.size(); i++) {
             UploadStatus upload = uploadsList.get(i);
             if (upload.getGameName().equals(gameName) && upload.getStatus() == UploadStatus.Status.UPLOADING) {
+                Log.d("UploadMonitorActivity", "Found matching upload for: " + gameName + ". Old progress: " + uploadsList.get(i).getProgress() + ", New progress: " + progress + ". Notifying item changed at index " + i);
                 upload.setProgress(progress);
                 adapter.notifyItemChanged(i);
+                found = true;
                 break;
             }
+        }
+        if (!found) {
+            Log.w("UploadMonitorActivity", "No matching UPLOADING item found for game: " + gameName + " in handleUploadProgress. List size: " + uploadsList.size());
         }
     }
 
