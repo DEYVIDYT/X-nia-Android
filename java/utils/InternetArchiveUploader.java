@@ -101,9 +101,22 @@ public class InternetArchiveUploader {
                 String line;
                 while ((line = reader.readLine()) != null) {
                     errorResponse.append(line);
+                    // Optional: Add a newline if you want to preserve some structure,
+                    // but be mindful if the original error is one giant line.
+                    // For this fix, let's keep it simple and append raw lines.
                 }
                 reader.close();
-                callback.onError("Erro no upload: " + responseCode + " - " + errorResponse.toString());
+
+                String fullErrorText = errorResponse.toString();
+                int maxLogLength = 1000; // Define a max length for the logged error part
+                String loggedErrorText;
+
+                if (fullErrorText.length() > maxLogLength) {
+                    loggedErrorText = fullErrorText.substring(0, maxLogLength) + "... (truncated)";
+                } else {
+                    loggedErrorText = fullErrorText;
+                }
+                callback.onError("Erro no upload: " + responseCode + " - " + loggedErrorText);
             }
             
             connection.disconnect();
