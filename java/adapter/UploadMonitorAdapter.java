@@ -40,7 +40,6 @@ public class UploadMonitorAdapter extends RecyclerView.Adapter<UploadMonitorAdap
         holder.tvGameName.setText(upload.getGameName());
         holder.tvFileName.setText(upload.getFileName());
         holder.tvFileSize.setText(upload.getFormattedFileSize());
-        holder.tvStatus.setText(upload.getStatusText());
         
         // Formatar tempo de início
         SimpleDateFormat dateFormat = new SimpleDateFormat("HH:mm:ss", Locale.getDefault());
@@ -50,10 +49,11 @@ public class UploadMonitorAdapter extends RecyclerView.Adapter<UploadMonitorAdap
         if (upload.getStatus() == UploadStatus.Status.UPLOADING) {
             holder.progressBar.setVisibility(View.VISIBLE);
             holder.progressBar.setProgress(upload.getProgress());
+            holder.tvStatus.setText(upload.getStatusText() + " " + upload.getProgress() + "%");
             holder.tvStatus.setTextColor(ContextCompat.getColor(holder.itemView.getContext(), android.R.color.holo_blue_dark));
         } else {
             holder.progressBar.setVisibility(View.GONE);
-            
+            holder.tvStatus.setText(upload.getStatusText());
             if (upload.getStatus() == UploadStatus.Status.COMPLETED) {
                 holder.tvStatus.setTextColor(ContextCompat.getColor(holder.itemView.getContext(), android.R.color.holo_green_dark));
             } else if (upload.getStatus() == UploadStatus.Status.ERROR) {

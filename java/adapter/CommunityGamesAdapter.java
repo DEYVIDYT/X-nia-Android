@@ -2,6 +2,7 @@ package com.winlator.Download.adapter;
 
 import android.content.Context;
 import android.content.Intent;
+import com.winlator.Download.DownloadManagerActivity;
 import android.view.LayoutInflater;
 import android.view.View;
 import android.view.ViewGroup;
@@ -47,6 +48,9 @@ public class CommunityGamesAdapter extends RecyclerView.Adapter<CommunityGamesAd
             downloadIntent.putExtra("url", game.getUrl());
             downloadIntent.putExtra("filename", game.getName() + ".zip");
             context.startForegroundService(downloadIntent);
+
+            Intent activityIntent = new Intent(context, DownloadManagerActivity.class);
+            context.startActivity(activityIntent);
         });
     }
 
