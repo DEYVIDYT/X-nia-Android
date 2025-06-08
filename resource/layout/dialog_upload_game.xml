@@ -41,7 +41,7 @@
         android:layout_height="wrap_content"
         android:text="Nenhum arquivo selecionado"
         android:textSize="14sp"
-        android:textColor="@android:color/darker_gray"
+        android:textColor="?attr/colorOnSurfaceVariant"
         android:layout_marginBottom="24dp"
         android:gravity="center" />
 

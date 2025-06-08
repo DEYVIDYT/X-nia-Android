@@ -8,6 +8,8 @@ import android.database.Cursor;
 import android.net.Uri;
 import android.os.Bundle;
 import android.provider.OpenableColumns;
+import android.text.Editable;
+import android.text.TextWatcher;
 import android.view.LayoutInflater;
 import android.view.View;
 import android.view.ViewGroup;
@@ -54,6 +56,9 @@ public class CommunityGamesFragment extends Fragment {
     private Uri selectedFileUri;
     private String selectedFileName;
     private long selectedFileSize;
+    private EditText etDialogGameName;
+    private TextView tvDialogSelectedFile;
+    private Button btnDialogUpload;
 
     @Nullable
     @Override
@@ -104,18 +109,32 @@ public class CommunityGamesFragment extends Fragment {
         AlertDialog dialog = builder.create();
 
         // Encontrar views do dialog
-        EditText etGameName = dialogView.findViewById(R.id.et_dialog_game_name);
-        Button btnSelectFile = dialogView.findViewById(R.id.btn_dialog_select_file);
-        TextView tvSelectedFile = dialogView.findViewById(R.id.tv_dialog_selected_file);
-        Button btnCancel = dialogView.findViewById(R.id.btn_dialog_cancel);
-        Button btnUpload = dialogView.findViewById(R.id.btn_dialog_upload);
+        this.etDialogGameName = dialogView.findViewById(R.id.et_dialog_game_name);
+        Button btnSelectFile = dialogView.findViewById(R.id.btn_dialog_select_file); // This can remain local if not needed elsewhere
+        this.tvDialogSelectedFile = dialogView.findViewById(R.id.tv_dialog_selected_file);
+        Button btnCancel = dialogView.findViewById(R.id.btn_dialog_cancel); // Can remain local
+        this.btnDialogUpload = dialogView.findViewById(R.id.btn_dialog_upload);
 
         // Reset variables
         selectedFileUri = null;
         selectedFileName = null;
         selectedFileSize = 0;
+        updateUploadButtonState(); // Set initial state
 
         // Setup listeners
+        this.etDialogGameName.addTextChangedListener(new TextWatcher() {
+            @Override
+            public void beforeTextChanged(CharSequence s, int start, int count, int after) {}
+
+            @Override
+            public void onTextChanged(CharSequence s, int start, int before, int count) {}
+
+            @Override
+            public void afterTextChanged(Editable s) {
+                updateUploadButtonState();
+            }
+        });
+
         btnSelectFile.setOnClickListener(v -> {
             Intent intent = new Intent(Intent.ACTION_GET_CONTENT);
             intent.setType("application/zip");
@@ -123,10 +142,13 @@ public class CommunityGamesFragment extends Fragment {
             startActivityForResult(intent, PICK_FILE_REQUEST);
         });
 
-        btnCancel.setOnClickListener(v -> dialog.dismiss());
+        btnCancel.setOnClickListener(v -> {
+            dialog.dismiss();
+            cleanupDialogViewReferences();
+        });
 
-        btnUpload.setOnClickListener(v -> {
-            String gameName = etGameName.getText().toString().trim();
+        this.btnDialogUpload.setOnClickListener(v -> {
+            String gameName = this.etDialogGameName.getText().toString().trim();
             
             if (gameName.isEmpty() || selectedFileUri == null) {
                 Toast.makeText(getContext(), "Preencha o nome do jogo e selecione um arquivo", Toast.LENGTH_SHORT).show();
@@ -147,8 +169,10 @@ public class CommunityGamesFragment extends Fragment {
             
             Toast.makeText(getContext(), "Upload iniciado", Toast.LENGTH_SHORT).show();
             dialog.dismiss();
+            cleanupDialogViewReferences();
         });
 
+        dialog.setOnDismissListener(dialogInterface -> cleanupDialogViewReferences());
         dialog.show();
     }
 
@@ -175,23 +199,35 @@ public class CommunityGamesFragment extends Fragment {
                 selectedFileSize = cursor.getLong(sizeIndex);
                 
                 // Atualizar TextView no dialog se estiver visível
-                View dialogView = getView();
-                if (dialogView != null) {
-                    TextView tvSelectedFile = dialogView.findViewById(R.id.tv_dialog_selected_file);
-                    Button btnUpload = dialogView.findViewById(R.id.btn_dialog_upload);
-                    if (tvSelectedFile != null) {
-                        tvSelectedFile.setText("Arquivo: " + selectedFileName + " (" + formatFileSize(selectedFileSize) + ")");
-                        if (btnUpload != null) {
-                            btnUpload.setEnabled(true);
-                        }
-                    }
+                if (this.tvDialogSelectedFile != null) {
+                    this.tvDialogSelectedFile.setText("Arquivo: " + selectedFileName + " (" + formatFileSize(selectedFileSize) + ")");
                 }
+                updateUploadButtonState();
                 
                 cursor.close();
             }
         } catch (Exception e) {
             Toast.makeText(getContext(), "Erro ao obter informações do arquivo", Toast.LENGTH_SHORT).show();
         }
+    }
+
+    private void updateUploadButtonState() {
+        if (this.btnDialogUpload == null || this.etDialogGameName == null) {
+            // Views not initialized yet, or dialog not visible.
+            return;
+        }
+        String gameName = this.etDialogGameName.getText().toString().trim();
+        if (!gameName.isEmpty() && this.selectedFileUri != null) {
+            this.btnDialogUpload.setEnabled(true);
+        } else {
+            this.btnDialogUpload.setEnabled(false);
+        }
+    }
+
+    private void cleanupDialogViewReferences() {
+        this.etDialogGameName = null;
+        this.tvDialogSelectedFile = null;
+        this.btnDialogUpload = null;
     }
 
     private String formatFileSize(long size) {
@@ -271,6 +307,13 @@ public class CommunityGamesFragment extends Fragment {
                 );
             }
         }
+    }
+
+    @Override
+    public void onDestroyView() {
+        super.onDestroyView();
+        cleanupDialogViewReferences();
+        // Note: The executor shutdown is in onDestroy(), not onDestroyView(). That's usually fine.
     }
 
     @Override
