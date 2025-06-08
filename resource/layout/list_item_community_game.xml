@@ -17,8 +17,9 @@
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:text="Nome do Jogo"
-            android:textSize="18sp"
-            android:textStyle="bold"
+            android:textAppearance="?attr/textAppearanceHeadlineSmall"
+            android:ellipsize="end"
+            android:maxLines="1"
             android:layout_marginBottom="8dp" />
 
         <TextView
@@ -26,7 +27,7 @@
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:text="Tamanho: 0 MB"
-            android:textSize="14sp"
+            android:textAppearance="?attr/textAppearanceBodyMedium"
             android:textColor="?attr/colorOnSurfaceVariant"
             android:layout_marginBottom="12dp" />
 
