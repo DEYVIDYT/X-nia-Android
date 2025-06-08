@@ -19,6 +19,7 @@ import android.os.Handler;
 import android.os.IBinder;
 import android.os.Looper;
 import android.util.Log;
+import android.webkit.URLUtil;
 import android.widget.Toast;
 
 import androidx.annotation.Nullable;
@@ -191,12 +192,15 @@ public class DownloadService extends Service {
     }
 
     private void handleStartDownload(Intent intent) {
+        Log.i(TAG, "handleStartDownload: Entry. Action: " + intent.getAction());
+        Log.d(TAG, "handleStartDownload: URL from intent: '" + intent.getStringExtra(EXTRA_URL) + "'");
+        Log.d(TAG, "handleStartDownload: FileName from intent: '" + intent.getStringExtra(EXTRA_FILE_NAME) + "'");
         String urlString = intent.getStringExtra(EXTRA_URL);
         String fileName = intent.getStringExtra(EXTRA_FILE_NAME);
         final int PREPARING_NOTIFICATION_ID = NOTIFICATION_ID_BASE - 1; // Unique ID for preparing/error notification
 
         if (urlString == null || urlString.trim().isEmpty() || fileName == null || fileName.trim().isEmpty()) {
-            Log.e(TAG, "Intent is missing required extras for download. URL: " + urlString + ", FileName: " + fileName);
+            Log.e(TAG, "handleStartDownload: Invalid or missing URL/FileName. URL: '" + urlString + "', FileName: '" + fileName + "'. Stopping service.");
 
             Notification invalidRequestNotification = new NotificationCompat.Builder(this, CHANNEL_ID)
                 .setSmallIcon(R.drawable.ic_cancel) // Ensure ic_cancel exists or use a default error icon
@@ -212,7 +216,26 @@ public class DownloadService extends Service {
             return;
         }
 
-        // If parameters are valid, proceed with the "Preparing download..." notification
+        // New check for URL syntax validity
+        if (!URLUtil.isValidUrl(urlString)) {
+            Log.e(TAG, "handleStartDownload: URL is syntactically invalid: '" + urlString + "'. Stopping service.");
+
+            Notification invalidUrlNotification = new NotificationCompat.Builder(this, CHANNEL_ID)
+                .setSmallIcon(R.drawable.ic_cancel) // Ensure ic_cancel exists
+                .setContentTitle("Download Falhou")
+                .setContentText("URL de download inválida.")
+                .setAutoCancel(true)
+                .build();
+            // Use the same PREPARING_NOTIFICATION_ID or a new unique one if PREPARING_NOTIFICATION_ID could still be active
+            // For this specific early exit, using PREPARING_NOTIFICATION_ID is fine as it's before real work.
+            final int INVALID_URL_NOTIFICATION_ID = NOTIFICATION_ID_BASE - 1; // Same as PREPARING_NOTIFICATION_ID
+            startForeground(INVALID_URL_NOTIFICATION_ID, invalidUrlNotification);
+
+            stopSelf();
+            return;
+        }
+
+        // If parameters are valid (including URL syntax), proceed with the "Preparing download..." notification
         Notification preparingNotification = createPreparingNotification(fileName);
         startForeground(PREPARING_NOTIFICATION_ID, preparingNotification);
 
@@ -222,6 +245,7 @@ public class DownloadService extends Service {
         }
 
         executor.execute(() -> {
+            Log.d(TAG, "handleStartDownload (Executor): Background processing started for URL: '" + urlString + "', FileName: '" + fileName + "'");
             // Check if a download task for this URL is already in activeDownloads
             for (DownloadTask existingTask : activeDownloads.values()) {
                 if (existingTask.urlString.equals(urlString)) {
@@ -239,9 +263,11 @@ public class DownloadService extends Service {
             }
 
             long downloadId = getDownloadIdByUrl(urlString);
+            Log.d(TAG, "handleStartDownload (Executor): getDownloadIdByUrl for '" + urlString + "' returned ID: " + downloadId);
 
             if (downloadId != -1) {
                 Download existingDownload = getDownloadById(downloadId);
+                Log.d(TAG, "handleStartDownload (Executor): Found existing DB entry for ID " + downloadId + ". Status: " + (existingDownload != null ? existingDownload.getStatus() : "null object") + ", Path: " + (existingDownload != null ? existingDownload.getLocalPath() : "null object"));
                 new Handler(Looper.getMainLooper()).post(() -> {
                     if (notificationManager != null) {
                          notificationManager.cancel(PREPARING_NOTIFICATION_ID);
@@ -250,21 +276,20 @@ public class DownloadService extends Service {
                         if (existingDownload.getStatus() == Download.STATUS_COMPLETED) {
                             Toast.makeText(DownloadService.this, "Este arquivo já foi baixado", Toast.LENGTH_SHORT).show();
                         } else if (existingDownload.getStatus() == Download.STATUS_PAUSED || existingDownload.getStatus() == Download.STATUS_FAILED) {
-                            // Instead of calling handleResumeDownload or handleRetryDownload directly,
-                            // which might have their own foreground/notification logic,
-                            // call the core startDownload method which is designed for this.
+                            Log.i(TAG, "handleStartDownload (MainThread): About to call startDownload for existing paused/failed download. ID: " + existingDownload.getId() + ", URL: '" + existingDownload.getUrl() + "', FileName: '" + existingDownload.getFileName() + "'");
                             startDownload(existingDownload.getId(), existingDownload.getUrl(), existingDownload.getFileName());
                         } else if (existingDownload.getStatus() == Download.STATUS_DOWNLOADING) {
-                            // This case implies DB says downloading, but no active task was found above.
-                            // This could be a recovery scenario.
                             Log.w(TAG, "DB indicates downloading, but no active task found for " + existingDownload.getFileName() + ". Attempting to restart.");
+                            Log.i(TAG, "handleStartDownload (MainThread): About to call startDownload for existing downloading (but no task) download. ID: " + existingDownload.getId() + ", URL: '" + existingDownload.getUrl() + "', FileName: '" + existingDownload.getFileName() + "'");
                             startDownload(existingDownload.getId(), existingDownload.getUrl(), existingDownload.getFileName());
                         }
                     } else {
                         // DB had an ID, but we couldn't fetch the Download object. This is an inconsistent state.
                         Log.w(TAG, "Could not fetch existing download with ID: " + downloadId + ". Treating as new.");
                         final long newDownloadIdAfterNull = insertDownload(urlString, fileName);
+                        Log.d(TAG, "handleStartDownload (Executor): Existing download object was null for ID " + downloadId + ". Attempted insert, new ID: " + newDownloadIdAfterNull);
                         if (newDownloadIdAfterNull != -1) {
+                            Log.i(TAG, "handleStartDownload (MainThread): About to call startDownload for new download (after null existing). ID: " + newDownloadIdAfterNull + ", URL: '" + urlString + "', FileName: '" + fileName + "'");
                             startDownload(newDownloadIdAfterNull, urlString, fileName);
                         } else {
                             Log.e(TAG, "Failed to insert new download record for: " + urlString);
@@ -278,12 +303,14 @@ public class DownloadService extends Service {
 
             // If no existing download ID was found by URL, this is a new download.
             final long newDownloadId = insertDownload(urlString, fileName);
+            Log.d(TAG, "handleStartDownload (Executor): No existing DB entry. Inserted new record with ID: " + newDownloadId + " for URL: '" + urlString + "'");
 
             new Handler(Looper.getMainLooper()).post(() -> {
                 if (notificationManager != null) {
                     notificationManager.cancel(PREPARING_NOTIFICATION_ID);
                 }
                 if (newDownloadId != -1) {
+                    Log.i(TAG, "handleStartDownload (MainThread): About to call startDownload for brand new download. ID: " + newDownloadId + ", URL: '" + urlString + "', FileName: '" + fileName + "'");
                     startDownload(newDownloadId, urlString, fileName);
                 } else {
                     Log.e(TAG, "Failed to insert new download record for: " + urlString);
@@ -411,6 +438,7 @@ public class DownloadService extends Service {
     }
 
     private void startDownload(long downloadId, String urlString, String fileName) {
+        Log.i(TAG, "startDownload: Entry. ID: " + downloadId + ", URL: '" + urlString + "', FileName: '" + fileName + "'");
         // Criar ou atualizar a notificação
         NotificationCompat.Builder builder = createOrUpdateNotificationBuilder(downloadId, fileName);
         activeNotifications.put(downloadId, builder);
@@ -424,6 +452,7 @@ public class DownloadService extends Service {
         // Iniciar a tarefa de download
         DownloadTask task = new DownloadTask(downloadId, urlString, fileName, builder);
         activeDownloads.put(downloadId, task);
+        Log.i(TAG, "startDownload: About to execute DownloadTask for ID: " + downloadId);
         task.execute();
         
         // Enviar broadcast
@@ -700,6 +729,7 @@ public class DownloadService extends Service {
 
         @Override
         protected void onPreExecute() {
+            Log.d(TAG, "DownloadTask (" + this.downloadId + "): onPreExecute. URL: '" + this.urlString + "'");
             super.onPreExecute();
             startTime = System.currentTimeMillis();
             
@@ -720,6 +750,7 @@ public class DownloadService extends Service {
             RandomAccessFile randomAccessFile = null;
 
             try {
+                Log.d(TAG, "DownloadTask (" + this.downloadId + "): doInBackground starting. URL: '" + this.urlString + "'");
                 // Preparar o diretório de download
                 File downloadDir = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS);
                 if (!downloadDir.exists()) {
@@ -846,7 +877,7 @@ public class DownloadService extends Service {
                 return downloadedFile;
                 
             } catch (Exception e) {
-                Log.e(TAG, "Error downloading file: " + e.getMessage(), e);
+                Log.e(TAG, "DownloadTask (" + this.downloadId + "): Exception during download: " + e.getMessage(), e);
                 updateDownloadStatus(downloadId, Download.STATUS_FAILED);
                 return null;
             } finally {
@@ -874,6 +905,7 @@ public class DownloadService extends Service {
 
         @Override
         protected void onPostExecute(File result) {
+            Log.d(TAG, "DownloadTask (" + this.downloadId + "): onPostExecute. Result is null: " + (result == null) + ". Task was paused: " + isPaused + ". URL: '" + this.urlString + "'");
             activeDownloads.remove(downloadId);
             
             if (isPaused) {

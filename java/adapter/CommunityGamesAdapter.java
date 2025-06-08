@@ -2,6 +2,7 @@ package com.winlator.Download.adapter;
 
 import android.content.Context;
 import android.content.Intent;
+import android.util.Log;
 import com.winlator.Download.DownloadManagerActivity;
 import android.view.LayoutInflater;
 import android.view.View;
@@ -44,9 +45,11 @@ public class CommunityGamesAdapter extends RecyclerView.Adapter<CommunityGamesAd
         
         holder.btnDownload.setOnClickListener(v -> {
             // Iniciar download usando o DownloadService existente
+            // Iniciar download usando o DownloadService existente
             Intent downloadIntent = new Intent(context, DownloadService.class);
             downloadIntent.putExtra("url", game.getUrl());
             downloadIntent.putExtra("filename", game.getName() + ".zip");
+            Log.d("CommunityGamesAdapter", "Attempting to start DownloadService. Game: '" + game.getName() + "', URL: '" + game.getUrl() + "', Target Filename: '" + (game.getName() + ".zip") + "'");
             context.startForegroundService(downloadIntent);
 
             Intent activityIntent = new Intent(context, DownloadManagerActivity.class);
