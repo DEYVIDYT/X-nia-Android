@@ -60,7 +60,7 @@
 
         <activity android:name=".DownloadManagerActivity" />
 
-        <activity android:name=".CommunityGamesActivity" />
+        <activity android:name=".SettingsActivity" />
 
         
         

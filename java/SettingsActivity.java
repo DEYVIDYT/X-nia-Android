@@ -15,12 +15,13 @@ import android.widget.Toast;
 
 import androidx.appcompat.app.AppCompatActivity;
 
+import com.google.android.material.color.DynamicColors;
 import java.io.File;
 import java.io.FileOutputStream;
 import java.io.InputStream;
 import com.winlator.Download.service.UploadService;
 
-public class CommunityGamesActivity extends AppCompatActivity {
+public class SettingsActivity extends AppCompatActivity {
 
     private static final int PICK_FILE_REQUEST = 1;
     private EditText etGameName;
@@ -38,7 +39,13 @@ public class CommunityGamesActivity extends AppCompatActivity {
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
-        setContentView(R.layout.activity_community_games);
+        DynamicColors.applyToActivityIfAvailable(this);
+        setContentView(R.layout.activity_settings);
+
+        if (getSupportActionBar() != null) {
+            getSupportActionBar().setTitle("Configurações");
+            // getSupportActionBar().setDisplayHomeAsUpEnabled(true); // Optional
+        }
 
         initViews();
         loadSettings();

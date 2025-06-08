@@ -9,7 +9,7 @@
     <item
         android:id="@+id/action_community_games"
         android:icon="@drawable/ic_upload"
-        android:title="Configurações de Upload"
+        android:title="Configurações"
         app:showAsAction="ifRoom" />
     <item
         android:id="@+id/action_upload_monitor"

@@ -13,8 +13,7 @@
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:text="Configurações de Upload"
-            android:textSize="24sp"
-            android:textStyle="bold"
+            android:textAppearance="?attr/textAppearanceHeadlineMedium"
             android:gravity="center"
             android:layout_marginBottom="24dp" />
 
@@ -22,16 +21,15 @@
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:text="Configurações do Internet Archive"
-            android:textSize="18sp"
-            android:textStyle="bold"
+            android:textAppearance="?attr/textAppearanceTitleLarge"
             android:layout_marginBottom="16dp" />
 
         <TextView
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:text="Para obter suas credenciais, acesse archive.org, faça login e vá em 'Account Settings' > 'S3 API Keys'"
-            android:textSize="12sp"
-            android:textColor="@android:color/darker_gray"
+            android:textAppearance="?attr/textAppearanceBodySmall"
+            android:textColor="?attr/colorOnSurfaceVariant"
             android:layout_marginBottom="16dp" />
 
         <com.google.android.material.textfield.TextInputLayout
@@ -84,15 +82,14 @@
         <View
             android:layout_width="match_parent"
             android:layout_height="1dp"
-            android:background="?android:attr/listDivider"
+            android:background="?attr/outlineVariant"
             android:layout_marginBottom="24dp" />
 
         <TextView
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:text="Upload de Jogo"
-            android:textSize="18sp"
-            android:textStyle="bold"
+            android:textAppearance="?attr/textAppearanceTitleLarge"
             android:layout_marginBottom="16dp" />
 
         <com.google.android.material.textfield.TextInputLayout
@@ -113,22 +110,24 @@
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:text="Selecionar Arquivo ZIP"
-            android:layout_marginBottom="16dp" />
+            android:layout_marginBottom="16dp"
+            style="@style/Widget.Material3.Button.OutlinedButton" />
 
         <TextView
             android:id="@+id/tv_selected_file"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:text="Nenhum arquivo selecionado"
-            android:textSize="14sp"
+            android:textAppearance="?attr/textAppearanceBodyMedium"
+            android:textColor="?attr/colorOnSurfaceVariant"
             android:layout_marginBottom="16dp" />
 
         <Button
             android:id="@+id/btn_upload"
+            style="@style/Widget.App.Button"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:text="Fazer Upload"
-            android:backgroundTint="@color/colorPrimary" />
+            android:text="Fazer Upload" />
 
     </LinearLayout>
 

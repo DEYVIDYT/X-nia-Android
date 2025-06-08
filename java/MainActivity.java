@@ -94,7 +94,7 @@ public class MainActivity extends AppCompatActivity {
             startActivity(intent);
             return true;
         } else if (item.getItemId() == R.id.action_community_games) {
-            Intent intent = new Intent(this, CommunityGamesActivity.class);
+            Intent intent = new Intent(this, SettingsActivity.class);
             startActivity(intent);
             return true;
         } else if (item.getItemId() == R.id.action_upload_monitor) {

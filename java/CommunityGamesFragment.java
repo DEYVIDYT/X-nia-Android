@@ -96,13 +96,13 @@ public class CommunityGamesFragment extends Fragment {
         if (accessKey.isEmpty() || secretKey.isEmpty() || itemIdentifier.isEmpty()) {
             Toast.makeText(getContext(), "Configure primeiro as credenciais do Internet Archive nas configurações", Toast.LENGTH_LONG).show();
             // Abrir activity de configurações
-            Intent intent = new Intent(getContext(), CommunityGamesActivity.class);
+            Intent intent = new Intent(getContext(), SettingsActivity.class);
             startActivity(intent);
             return;
         }
 
         // Criar dialog
-        AlertDialog.Builder builder = new AlertDialog.Builder(getContext());
+        AlertDialog.Builder builder = new AlertDialog.Builder(getContext(), com.google.android.material.R.style.ThemeOverlay_Material3_AlertDialog);
         View dialogView = LayoutInflater.from(getContext()).inflate(R.layout.dialog_upload_game, null);
         builder.setView(dialogView);
 
