@@ -28,7 +28,7 @@
             android:layout_height="wrap_content"
             android:text="arquivo.zip"
             android:textSize="14sp"
-            android:textColor="@android:color/darker_gray"
+            android:textColor="?attr/colorOnSurfaceVariant"
             android:layout_marginBottom="4dp" />
 
         <LinearLayout
@@ -44,7 +44,7 @@
                 android:layout_weight="1"
                 android:text="0 MB"
                 android:textSize="12sp"
-                android:textColor="@android:color/darker_gray" />
+                android:textColor="?attr/colorOnSurfaceVariant" />
 
             <TextView
                 android:id="@+id/tv_upload_start_time"
@@ -52,7 +52,7 @@
                 android:layout_height="wrap_content"
                 android:text="Iniciado às 00:00:00"
                 android:textSize="12sp"
-                android:textColor="@android:color/darker_gray" />
+                android:textColor="?attr/colorOnSurfaceVariant" />
 
         </LinearLayout>
 

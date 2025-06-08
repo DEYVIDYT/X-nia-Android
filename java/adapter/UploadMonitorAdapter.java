@@ -1,12 +1,15 @@
 package com.winlator.Download.adapter;
 
+import android.content.Context;
 import android.util.Log;
+import android.util.TypedValue;
 import android.view.LayoutInflater;
 import android.view.View;
 import android.view.ViewGroup;
 import android.widget.ProgressBar;
 import android.widget.TextView;
 
+import androidx.annotation.AttrRes;
 import androidx.annotation.NonNull;
 import androidx.core.content.ContextCompat;
 import androidx.recyclerview.widget.RecyclerView;
@@ -51,21 +54,30 @@ public class UploadMonitorAdapter extends RecyclerView.Adapter<UploadMonitorAdap
         if (upload.getStatus() == UploadStatus.Status.UPLOADING) {
             holder.progressBar.setVisibility(View.VISIBLE);
             holder.progressBar.setProgress(upload.getProgress());
-            holder.tvStatus.setTextColor(ContextCompat.getColor(holder.itemView.getContext(), android.R.color.holo_blue_dark));
+            holder.tvStatus.setTextColor(getThemeColor(holder.itemView.getContext(), com.google.android.material.R.attr.colorPrimary));
         } else {
             holder.progressBar.setVisibility(View.GONE);
             // Colors for other states
             if (upload.getStatus() == UploadStatus.Status.COMPLETED) {
-                holder.tvStatus.setTextColor(ContextCompat.getColor(holder.itemView.getContext(), android.R.color.holo_green_dark));
+                holder.tvStatus.setTextColor(getThemeColor(holder.itemView.getContext(), com.google.android.material.R.attr.colorTertiary));
             } else if (upload.getStatus() == UploadStatus.Status.ERROR) {
-                holder.tvStatus.setTextColor(ContextCompat.getColor(holder.itemView.getContext(), android.R.color.holo_red_dark));
+                holder.tvStatus.setTextColor(getThemeColor(holder.itemView.getContext(), com.google.android.material.R.attr.colorError));
             } else {
-                // Default color for PENDING or other states if any
-                holder.tvStatus.setTextColor(ContextCompat.getColor(holder.itemView.getContext(), android.R.color.tab_indicator_text)); // Example default
+                // Default for any other status not explicitly handled (e.g., if a PENDING state was added)
+                holder.tvStatus.setTextColor(getThemeColor(holder.itemView.getContext(), com.google.android.material.R.attr.colorOnSurfaceVariant));
             }
         }
         // Set status text for all states after specific configurations
         holder.tvStatus.setText(upload.getStatusText());
+    }
+
+    private int getThemeColor(Context context, @AttrRes int attrRes) {
+        TypedValue typedValue = new TypedValue();
+        if (context.getTheme().resolveAttribute(attrRes, typedValue, true)) {
+            return typedValue.data;
+        }
+        // Fallback color if attribute not found, though this shouldn't happen with Material themes
+        return ContextCompat.getColor(context, android.R.color.black); // Or some other default
     }
 
     @Override

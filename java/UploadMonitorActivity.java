@@ -1,5 +1,6 @@
 package com.winlator.Download;
 
+import com.google.android.material.color.DynamicColors;
 import android.content.BroadcastReceiver;
 import android.content.Context;
 import android.content.Intent;
@@ -28,6 +29,7 @@ public class UploadMonitorActivity extends AppCompatActivity {
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
+        DynamicColors.applyToActivityIfAvailable(this);
         setContentView(R.layout.activity_upload_monitor);
 
         // Configurar action bar
@@ -107,7 +109,7 @@ public class UploadMonitorActivity extends AppCompatActivity {
             if (upload.getGameName().equals(gameName) && upload.getStatus() == UploadStatus.Status.UPLOADING) {
                 Log.d("UploadMonitorActivity", "Found matching upload for: " + gameName + ". Old progress: " + uploadsList.get(i).getProgress() + ", New progress: " + progress + ". Notifying item changed at index " + i);
                 upload.setProgress(progress);
-                adapter.notifyItemChanged(i);
+                adapter.notifyDataSetChanged();
                 found = true;
                 break;
             }
@@ -125,7 +127,7 @@ public class UploadMonitorActivity extends AppCompatActivity {
             if (upload.getGameName().equals(gameName)) {
                 upload.setStatus(UploadStatus.Status.COMPLETED);
                 upload.setProgress(100);
-                adapter.notifyItemChanged(i);
+                adapter.notifyDataSetChanged();
                 break;
             }
         }
@@ -140,7 +142,7 @@ public class UploadMonitorActivity extends AppCompatActivity {
             if (upload.getGameName().equals(gameName)) {
                 upload.setStatus(UploadStatus.Status.ERROR);
                 upload.setErrorMessage(error);
-                adapter.notifyItemChanged(i);
+                adapter.notifyDataSetChanged();
                 break;
             }
         }

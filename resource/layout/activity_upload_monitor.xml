@@ -13,7 +13,7 @@
         android:padding="16dp"
         android:gravity="center"
         android:background="?attr/colorPrimary"
-        android:textColor="@android:color/white" />
+        android:textColor="?attr/colorOnPrimary" />
 
     <androidx.recyclerview.widget.RecyclerView
         android:id="@+id/recycler_view_uploads"
