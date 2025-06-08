@@ -56,13 +56,22 @@ public class UploadService extends Service {
             String fileName = intent.getStringExtra("file_name");
             long fileSize = intent.getLongExtra("file_size", 0);
 
+            // Ensure gameName is available for the preparing notification title
+            String currentProcessGameName = gameName; // Already extracted
+            if (currentProcessGameName == null || currentProcessGameName.isEmpty()) {
+                currentProcessGameName = "Upload"; // Default title for the very first notification
+            }
+
+            // Create and show a temporary "Preparing" notification IMMEDIATELY
+            // Use the main NOTIFICATION_ID, it will be updated by uploadGame.
+            Notification preparingOrInitialNotification = createNotification("Preparando " + currentProcessGameName + "...", 0); // Pass 0 for initial progress
+            startForeground(NOTIFICATION_ID, preparingOrInitialNotification);
+
             // Enviar broadcast de início do upload
             sendUploadBroadcast("UPLOAD_STARTED", gameName, fileName, fileSize, 0, null);
 
-            startForeground(NOTIFICATION_ID, createNotification("Iniciando upload de " + gameName + "...", 0));
-
             executor.execute(() -> {
-                uploadGame(gameName, accessKey, secretKey, itemIdentifier, 
+                uploadGame(gameName, accessKey, secretKey, itemIdentifier,
                           Uri.parse(fileUriString), fileName, fileSize);
             });
         }

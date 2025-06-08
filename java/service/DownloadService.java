@@ -193,19 +193,27 @@ public class DownloadService extends Service {
     private void handleStartDownload(Intent intent) {
         String urlString = intent.getStringExtra(EXTRA_URL);
         String fileName = intent.getStringExtra(EXTRA_FILE_NAME);
+        final int PREPARING_NOTIFICATION_ID = NOTIFICATION_ID_BASE - 1; // Unique ID for preparing/error notification
 
-        if (urlString == null || fileName == null) {
+        if (urlString == null || urlString.trim().isEmpty() || fileName == null || fileName.trim().isEmpty()) {
             Log.e(TAG, "Intent is missing required extras for download. URL: " + urlString + ", FileName: " + fileName);
-            // If essential info is missing, we can't proceed with this specific download.
-            // For onStartCommand, returning START_NOT_STICKY would be appropriate here if this method could directly influence it.
-            // Since this is a helper, just log and return. The service itself will continue running.
+
+            Notification invalidRequestNotification = new NotificationCompat.Builder(this, CHANNEL_ID)
+                .setSmallIcon(R.drawable.ic_cancel) // Ensure ic_cancel exists or use a default error icon
+                .setContentTitle("Download Falhou")
+                .setContentText("Pedido de download inválido.")
+                .setAutoCancel(true)
+                .build();
+            startForeground(PREPARING_NOTIFICATION_ID, invalidRequestNotification);
+
+            // Stop the service as it cannot proceed.
+            // The notification tied to startForeground will be removed by stopSelf.
+            stopSelf();
             return;
         }
 
-        final int PREPARING_NOTIFICATION_ID = NOTIFICATION_ID_BASE - 1;
-
+        // If parameters are valid, proceed with the "Preparing download..." notification
         Notification preparingNotification = createPreparingNotification(fileName);
-        // Directly call startForeground as this method is part of the Service.
         startForeground(PREPARING_NOTIFICATION_ID, preparingNotification);
 
         if (executor == null) {
