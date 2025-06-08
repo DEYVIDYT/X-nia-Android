@@ -71,6 +71,7 @@ public class DownloadService extends Service {
 
     private static final String CHANNEL_ID = "WinlatorDownloadChannel";
     private static final int NOTIFICATION_ID_BASE = 1000;
+    private static final int GENERIC_SERVICE_NOTIFICATION_ID = NOTIFICATION_ID_BASE - 2;
 
     private NotificationManager notificationManager;
     private SQLiteHelper dbHelper;
@@ -92,13 +93,20 @@ public class DownloadService extends Service {
     @Override
     public void onCreate() {
         super.onCreate();
-        notificationManager = (NotificationManager) getSystemService(Context.NOTIFICATION_SERVICE);
-        dbHelper = new SQLiteHelper(this);
-        broadcastManager = LocalBroadcastManager.getInstance(this);
-        createNotificationChannel();
-        executor = Executors.newSingleThreadExecutor(); // Initialize executor
-        // Verificar e corrigir status de downloads ao iniciar o serviço
-        verifyAndCorrectDownloadStatuses();
+        try {
+            notificationManager = (NotificationManager) getSystemService(Context.NOTIFICATION_SERVICE);
+            dbHelper = new SQLiteHelper(this);
+            broadcastManager = LocalBroadcastManager.getInstance(this);
+            createNotificationChannel();
+            executor = Executors.newSingleThreadExecutor(); // Initialize executor
+            // Verificar e corrigir status de downloads ao iniciar o serviço
+            verifyAndCorrectDownloadStatuses();
+        } catch (Throwable t) {
+            Log.e(TAG, "Critical error during DownloadService onCreate", t);
+            // Depending on the severity, you might want to stop the service from continuing
+            // if critical initializations failed. For now, just logging.
+            // If dbHelper is null, for example, subsequent operations will fail.
+        }
     }
 
     private Notification createPreparingNotification(String fileName) {
@@ -122,10 +130,20 @@ public class DownloadService extends Service {
     @Override
     public int onStartCommand(Intent intent, int flags, int startId) {
         if (intent == null) {
-             // Se o serviço for reiniciado pelo sistema, verificar status novamente
-            verifyAndCorrectDownloadStatuses();
+            Log.w(TAG, "onStartCommand received a null intent. Stopping service if no active tasks.");
+            checkStopForeground();
             return START_STICKY;
         }
+
+        Notification genericNotification = new NotificationCompat.Builder(this, CHANNEL_ID)
+            .setSmallIcon(R.drawable.ic_download)
+            .setContentTitle("Download Service")
+            .setContentText("Serviço de download ativo...")
+            .setPriority(NotificationCompat.PRIORITY_LOW)
+            .setOngoing(true)
+            .build();
+        startForeground(GENERIC_SERVICE_NOTIFICATION_ID, genericNotification);
+        Log.d(TAG, "onStartCommand: Initial generic startForeground completed.");
 
         String action = intent.getStringExtra(EXTRA_ACTION);
         if (action == null) {
@@ -147,6 +165,17 @@ public class DownloadService extends Service {
                 break;
             case ACTION_RETRY_DOWNLOAD:
                 handleRetryDownload(intent);
+                break;
+            default:
+                Log.w(TAG, "onStartCommand: Received unknown action: " + action);
+                Notification unknownActionNotification = new NotificationCompat.Builder(this, CHANNEL_ID)
+                    .setSmallIcon(R.drawable.ic_cancel)
+                    .setContentTitle("Download Service")
+                    .setContentText("Ação desconhecida no serviço de download.")
+                    .setAutoCancel(true)
+                    .build();
+                notificationManager.notify(GENERIC_SERVICE_NOTIFICATION_ID, unknownActionNotification);
+                stopSelf();
                 break;
         }
 
