@@ -15,7 +15,9 @@ import android.os.AsyncTask;
 import android.os.Binder;
 import android.os.Build;
 import android.os.Environment;
+import android.os.Handler;
 import android.os.IBinder;
+import android.os.Looper;
 import android.util.Log;
 import android.widget.Toast;
 
@@ -44,6 +46,8 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 
 public class DownloadService extends Service {
 
@@ -71,6 +75,7 @@ public class DownloadService extends Service {
     private SQLiteHelper dbHelper;
     private final IBinder binder = new DownloadBinder();
     private LocalBroadcastManager broadcastManager;
+    private ExecutorService executor;
     
     // Mapa para armazenar as tarefas de download ativas
     private final Map<Long, DownloadTask> activeDownloads = new ConcurrentHashMap<>();
@@ -90,8 +95,27 @@ public class DownloadService extends Service {
         dbHelper = new SQLiteHelper(this);
         broadcastManager = LocalBroadcastManager.getInstance(this);
         createNotificationChannel();
+        executor = Executors.newSingleThreadExecutor(); // Initialize executor
         // Verificar e corrigir status de downloads ao iniciar o serviço
         verifyAndCorrectDownloadStatuses();
+    }
+
+    private Notification createPreparingNotification(String fileName) {
+        Intent notificationIntent = new Intent(this, DownloadManagerActivity.class);
+        // Use a unique request code for the PendingIntent if it might conflict with others.
+        // For a temporary notification, request code 0 might be fine if not expecting updates.
+        PendingIntent pendingIntent = PendingIntent.getActivity(
+            this, 0, notificationIntent,
+            PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
+
+        return new NotificationCompat.Builder(this, CHANNEL_ID)
+            .setSmallIcon(R.drawable.ic_download) // Consider a distinct icon for "preparing" if available
+            .setContentTitle(fileName)
+            .setContentText("Preparando download...")
+            .setProgress(0, 0, true) // Indeterminate progress
+            .setOngoing(true) // Make it ongoing so user knows something is happening
+            .setContentIntent(pendingIntent) // Optional: action when user taps
+            .build();
     }
 
     @Override
@@ -167,45 +191,102 @@ public class DownloadService extends Service {
     }
 
     private void handleStartDownload(Intent intent) {
-        if (!intent.hasExtra(EXTRA_URL) || !intent.hasExtra(EXTRA_FILE_NAME)) {
-            Log.e(TAG, "Intent is missing required extras for download.");
-            return;
-        }
-
         String urlString = intent.getStringExtra(EXTRA_URL);
         String fileName = intent.getStringExtra(EXTRA_FILE_NAME);
 
-        // Verificar se já existe um download para esta URL
-        long downloadId = getDownloadIdByUrl(urlString);
-        if (downloadId != -1) {
-            // Se já existe, verificar o status
-            Download existingDownload = getDownloadById(downloadId);
-            if (existingDownload != null) {
-                if (existingDownload.getStatus() == Download.STATUS_COMPLETED) {
-                    // Se já está completo, notificar o usuário
-                    Toast.makeText(this, "Este arquivo já foi baixado", Toast.LENGTH_SHORT).show();
-                    return;
-                } else if (existingDownload.getStatus() == Download.STATUS_PAUSED) {
-                    // Se está pausado, retomar
-                    handleResumeDownload(downloadId);
-                    return;
-                } else if (existingDownload.getStatus() == Download.STATUS_FAILED) {
-                    // Se falhou, tentar novamente
-                    handleRetryDownload(downloadId);
-                    return;
-                } else if (existingDownload.getStatus() == Download.STATUS_DOWNLOADING) {
-                    // Se já está baixando (e a tarefa está ativa, verificado implicitamente ao não cair nos casos acima), notificar
-                    Toast.makeText(this, "Este arquivo já está sendo baixado", Toast.LENGTH_SHORT).show();
+        if (urlString == null || fileName == null) {
+            Log.e(TAG, "Intent is missing required extras for download. URL: " + urlString + ", FileName: " + fileName);
+            // If essential info is missing, we can't proceed with this specific download.
+            // For onStartCommand, returning START_NOT_STICKY would be appropriate here if this method could directly influence it.
+            // Since this is a helper, just log and return. The service itself will continue running.
+            return;
+        }
+
+        final int PREPARING_NOTIFICATION_ID = NOTIFICATION_ID_BASE - 1;
+
+        Notification preparingNotification = createPreparingNotification(fileName);
+        // Directly call startForeground as this method is part of the Service.
+        startForeground(PREPARING_NOTIFICATION_ID, preparingNotification);
+
+        if (executor == null) {
+            Log.w(TAG, "Executor was null in handleStartDownload, re-initializing.");
+            executor = Executors.newSingleThreadExecutor();
+        }
+
+        executor.execute(() -> {
+            // Check if a download task for this URL is already in activeDownloads
+            for (DownloadTask existingTask : activeDownloads.values()) {
+                if (existingTask.urlString.equals(urlString)) {
+                    Log.i(TAG, "Download task for URL already active: " + urlString);
+                    new Handler(Looper.getMainLooper()).post(() -> {
+                        if (notificationManager != null) { // Check notificationManager
+                            notificationManager.cancel(PREPARING_NOTIFICATION_ID);
+                        }
+                        Toast.makeText(DownloadService.this, "Este arquivo já está sendo baixado", Toast.LENGTH_SHORT).show();
+                    });
+                    // No need to call checkStopForeground here as the service was just started with a new notification.
+                    // If this task wasn't truly new, the original foreground notification for that task should still be active.
                     return;
                 }
             }
-        }
 
-        // Criar um novo download
-        downloadId = insertDownload(urlString, fileName);
-        if (downloadId != -1) {
-            startDownload(downloadId, urlString, fileName);
-        }
+            long downloadId = getDownloadIdByUrl(urlString);
+
+            if (downloadId != -1) {
+                Download existingDownload = getDownloadById(downloadId);
+                new Handler(Looper.getMainLooper()).post(() -> {
+                    if (notificationManager != null) {
+                         notificationManager.cancel(PREPARING_NOTIFICATION_ID);
+                    }
+                    if (existingDownload != null) {
+                        if (existingDownload.getStatus() == Download.STATUS_COMPLETED) {
+                            Toast.makeText(DownloadService.this, "Este arquivo já foi baixado", Toast.LENGTH_SHORT).show();
+                        } else if (existingDownload.getStatus() == Download.STATUS_PAUSED || existingDownload.getStatus() == Download.STATUS_FAILED) {
+                            // Instead of calling handleResumeDownload or handleRetryDownload directly,
+                            // which might have their own foreground/notification logic,
+                            // call the core startDownload method which is designed for this.
+                            startDownload(existingDownload.getId(), existingDownload.getUrl(), existingDownload.getFileName());
+                        } else if (existingDownload.getStatus() == Download.STATUS_DOWNLOADING) {
+                            // This case implies DB says downloading, but no active task was found above.
+                            // This could be a recovery scenario.
+                            Log.w(TAG, "DB indicates downloading, but no active task found for " + existingDownload.getFileName() + ". Attempting to restart.");
+                            startDownload(existingDownload.getId(), existingDownload.getUrl(), existingDownload.getFileName());
+                        }
+                    } else {
+                        // DB had an ID, but we couldn't fetch the Download object. This is an inconsistent state.
+                        Log.w(TAG, "Could not fetch existing download with ID: " + downloadId + ". Treating as new.");
+                        final long newDownloadIdAfterNull = insertDownload(urlString, fileName);
+                        if (newDownloadIdAfterNull != -1) {
+                            startDownload(newDownloadIdAfterNull, urlString, fileName);
+                        } else {
+                            Log.e(TAG, "Failed to insert new download record for: " + urlString);
+                            Toast.makeText(DownloadService.this, "Erro ao iniciar download.", Toast.LENGTH_SHORT).show();
+                        }
+                    }
+                    checkStopForeground();
+                });
+                return;
+            }
+
+            // If no existing download ID was found by URL, this is a new download.
+            final long newDownloadId = insertDownload(urlString, fileName);
+
+            new Handler(Looper.getMainLooper()).post(() -> {
+                if (notificationManager != null) {
+                    notificationManager.cancel(PREPARING_NOTIFICATION_ID);
+                }
+                if (newDownloadId != -1) {
+                    startDownload(newDownloadId, urlString, fileName);
+                } else {
+                    Log.e(TAG, "Failed to insert new download record for: " + urlString);
+                    Toast.makeText(DownloadService.this, "Erro ao iniciar download.", Toast.LENGTH_SHORT).show();
+                }
+                // checkStopForeground is important here: if startDownload fails to post its own fg notification
+                // or if the download is immediately found to be complete/invalid before a real task starts,
+                // this ensures the "preparing" notification is cleared and service stops if appropriate.
+                checkStopForeground();
+            });
+        });
     }
 
     private void handlePauseDownload(Intent intent) {
@@ -1142,6 +1223,11 @@ public class DownloadService extends Service {
         }
         activeDownloads.clear();
         activeNotifications.clear();
+
+        if (executor != null && !executor.isShutdown()) {
+            executor.shutdown(); // Properly shutdown the executor
+        }
+
         if (dbHelper != null) {
             dbHelper.close();
         }

@@ -1,8 +1,9 @@
 package com.winlator.Download.model;
 
-import java.io.Serializable;
+import android.os.Parcel;
+import android.os.Parcelable;
 
-public class Release implements Serializable {
+public class Release implements Parcelable {
     private String name;
     private String tagName;
     private String publishedAt;
@@ -67,6 +68,47 @@ public class Release implements Serializable {
             return String.format("%.1f GB", assetSize / (1024.0 * 1024 * 1024));
         }
     }
+
+    // Parcelable implementation
+    @Override
+    public int describeContents() {
+        return 0;
+    }
+
+    @Override
+    public void writeToParcel(Parcel dest, int flags) {
+        dest.writeString(this.name);
+        dest.writeString(this.tagName);
+        dest.writeString(this.publishedAt);
+        dest.writeString(this.body);
+        dest.writeString(this.htmlUrl);
+        dest.writeString(this.downloadUrl);
+        dest.writeString(this.assetName);
+        dest.writeLong(this.assetSize);
+    }
+
+    protected Release(Parcel in) {
+        this.name = in.readString();
+        this.tagName = in.readString();
+        this.publishedAt = in.readString();
+        this.body = in.readString();
+        this.htmlUrl = in.readString();
+        this.downloadUrl = in.readString();
+        this.assetName = in.readString();
+        this.assetSize = in.readLong();
+    }
+
+    public static final Parcelable.Creator<Release> CREATOR = new Parcelable.Creator<Release>() {
+        @Override
+        public Release createFromParcel(Parcel source) {
+            return new Release(source);
+        }
+
+        @Override
+        public Release[] newArray(int size) {
+            return new Release[size];
+        }
+    };
 }
 
 
