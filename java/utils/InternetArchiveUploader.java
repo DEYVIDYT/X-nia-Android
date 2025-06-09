@@ -73,6 +73,19 @@ public class InternetArchiveUploader {
                 connection.setRequestProperty("Content-Length", String.valueOf(fileSize));
             }
 
+            long contentLengthForStreaming;
+            if (streamStartOffset > 0) {
+                contentLengthForStreaming = fileSize - streamStartOffset;
+            } else {
+                contentLengthForStreaming = fileSize;
+            }
+            // Ensure contentLengthForStreaming is not negative, which could happen if fileSize or streamStartOffset is incorrect.
+            // Though Content-Length header above would also be problematic in that case.
+            if (contentLengthForStreaming < 0) {
+                 contentLengthForStreaming = 0; // Or handle as an error, but for setFixedLengthStreamingMode, non-negative is needed.
+            }
+            connection.setFixedLengthStreamingMode(contentLengthForStreaming);
+
             DataOutputStream dos = new DataOutputStream(connection.getOutputStream());
             // FileInputStream fileInputStream = new FileInputStream(file); // Replaced by inputStream parameter
             // fileInputStream.skip(startByte); // streamStartOffset is assumed to be handled by caller
