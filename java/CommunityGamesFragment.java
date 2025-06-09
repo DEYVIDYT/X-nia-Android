@@ -1,7 +1,8 @@
 package com.winlator.Download;
 
 import android.app.Activity;
-import android.app.AlertDialog;
+// import android.app.AlertDialog; // Replaced by MaterialAlertDialogBuilder
+import com.google.android.material.dialog.MaterialAlertDialogBuilder; // Added
 import android.content.Intent;
 import android.content.SharedPreferences;
 import android.database.Cursor;
@@ -154,11 +155,11 @@ public class CommunityGamesFragment extends Fragment {
         // If we reach here, the preferred service is configured, or an unexpected preferredService value was encountered but another service was found to be configured.
         // Proceed to show dialog...
 
-        AlertDialog.Builder builder = new AlertDialog.Builder(getContext());
-        View dialogView = LayoutInflater.from(getContext()).inflate(R.layout.dialog_upload_game, null);
+        MaterialAlertDialogBuilder builder = new MaterialAlertDialogBuilder(requireContext());
+        View dialogView = LayoutInflater.from(requireContext()).inflate(R.layout.dialog_upload_game, null); // Use requireContext() for layout inflater too
         builder.setView(dialogView);
 
-        AlertDialog dialog = builder.create();
+        androidx.appcompat.app.AlertDialog dialog = builder.create(); // Changed to androidx.appcompat.app.AlertDialog
 
         this.etDialogGameName = dialogView.findViewById(R.id.et_dialog_game_name);
         Button btnSelectFile = dialogView.findViewById(R.id.btn_dialog_select_file);

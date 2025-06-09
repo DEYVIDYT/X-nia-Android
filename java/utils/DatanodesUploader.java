@@ -155,47 +155,63 @@ public class DatanodesUploader {
                 }
                 reader.close();
 
-                Log.d(TAG, "Datanodes API Response: " + response.toString());
-                // Parse JSON response
-                JSONObject jsonResponse = new JSONObject(response.toString());
-
-                // Check API status and extract file URL
-                if (jsonResponse.has("status") && "ok".equalsIgnoreCase(jsonResponse.getString("status"))) {
-                    JSONObject data = jsonResponse.getJSONObject("data");
-                    JSONObject fileInfo = data.getJSONObject("file");
-                    JSONObject urlInfo = fileInfo.getJSONObject("url");
-                    String fullUrl = urlInfo.getString("full");
-                    callback.onSuccess(fullUrl); // Report success with file URL
-                } else {
-                    // Handle cases where API reports an error despite HTTP 200
-                    String errorMessage = "Upload successful but API returned non-ok status.";
-                    if (jsonResponse.has("error") && jsonResponse.getJSONObject("error").has("message")) {
-                        errorMessage = jsonResponse.getJSONObject("error").getString("message");
+                String responseString = response.toString();
+                Log.d(TAG, "Datanodes API Raw Response (HTTP 200): " + responseString);
+                try {
+                    JSONObject jsonResponse = new JSONObject(responseString);
+                    // Check API status and extract file URL
+                    if (jsonResponse.has("status") && "ok".equalsIgnoreCase(jsonResponse.getString("status"))) {
+                        JSONObject data = jsonResponse.getJSONObject("data");
+                        JSONObject fileInfo = data.getJSONObject("file");
+                        JSONObject urlInfo = fileInfo.getJSONObject("url");
+                        String fullUrl = urlInfo.getString("full");
+                        callback.onSuccess(fullUrl); // Report success with file URL
+                    } else {
+                        // Handle cases where API reports an error despite HTTP 200
+                        String errorMessage = "Upload successful but API returned non-ok status or missing status.";
+                        if (jsonResponse.has("error") && jsonResponse.getJSONObject("error").has("message")) {
+                            errorMessage = jsonResponse.getJSONObject("error").getString("message");
+                        } else if (jsonResponse.has("message")) { // Some APIs might return a top-level message
+                            errorMessage = jsonResponse.getString("message");
+                        }
+                        Log.e(TAG, "Datanodes API reported an error in JSON: " + errorMessage + " | Full JSON: " + responseString);
+                        callback.onError(errorMessage);
                     }
-                    callback.onError(errorMessage);
+                } catch (org.json.JSONException jsonException) { // Be specific with JSONException
+                    Log.e(TAG, "Failed to parse Datanodes API response as JSON. Raw response was: \n" + responseString, jsonException);
+                    callback.onError("Falha ao processar resposta do servidor (não JSON): " + jsonException.getMessage());
                 }
             } else { // Handle non-OK HTTP responses
-                BufferedReader errorReader = null;
-                try {
-                    // Try to read the error stream for more details
-                    errorReader = new BufferedReader(new InputStreamReader(connection.getErrorStream()));
-                    StringBuilder errorResponse = new StringBuilder();
-                    String errorLine;
-                    while ((errorLine = errorReader.readLine()) != null) {
-                        errorResponse.append(errorLine);
+                InputStream errorStream = connection.getErrorStream();
+                StringBuilder errorResponse = new StringBuilder();
+                if (errorStream != null) {
+                    try (BufferedReader errorReader = new BufferedReader(new InputStreamReader(errorStream))) {
+                        String errorLine;
+                        while ((errorLine = errorReader.readLine()) != null) {
+                            errorResponse.append(errorLine);
+                        }
+                    } catch (IOException e) {
+                        Log.e(TAG, "IOException while reading error stream: " + e.getMessage());
+                        // errorResponse might be incomplete, but log what we have
                     }
-                    Log.e(TAG, "Datanodes API Error Response: " + errorResponse.toString());
-                    callback.onError("Erro no upload: " + responseCode + " - " + errorResponse.toString());
-                } catch (Exception e) { // Fallback if error stream reading fails
-                    Log.e(TAG, "Error reading error stream: " + e.getMessage());
-                    callback.onError("Erro no upload: " + responseCode + ". Não foi possível ler a mensagem de erro.");
-                } finally {
-                    if (errorReader != null) {
-                        try { errorReader.close(); } catch (IOException e) { Log.e(TAG, "Failed to close error reader", e); }
-                    }
+                } else {
+                    errorResponse.append("No error stream data, but status code was ").append(responseCode);
                 }
+                String errorOutput = errorResponse.toString();
+                if (errorOutput.isEmpty() && connection.getResponseMessage() != null) { // getResponseMessage can be null
+                     errorOutput = connection.getResponseMessage();
+                }
+
+                Log.e(TAG, "Datanodes API Error. HTTP Code: " + responseCode + ". Response: " + errorOutput);
+                callback.onError("Erro no upload: " + responseCode + " - " + errorOutput);
             }
 
+        } catch (org.json.JSONException e) { // Catch JSONException separately if it occurs outside the try-catch for HTTP 200 response
+            Log.e(TAG, "JSONException during upload process (outside HTTP 200 block)", e);
+            callback.onError("Erro de formatação de dados (JSON): " + e.getMessage());
+        } catch (IOException e) { // Catch IOExceptions
+            Log.e(TAG, "IOException during upload process", e);
+            callback.onError("Erro de comunicação (IO): " + e.getMessage());
         } catch (Exception e) { // Catch any other exceptions during the process
             Log.e(TAG, "Upload failed", e);
             callback.onError("Erro no upload: " + e.getMessage());
