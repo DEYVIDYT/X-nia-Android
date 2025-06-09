@@ -135,7 +135,14 @@ public class CommunityGamesFragment extends Fragment {
 
         btnSelectFile.setOnClickListener(v -> {
             Intent intent = new Intent(Intent.ACTION_OPEN_DOCUMENT); // Changed to ACTION_OPEN_DOCUMENT
-            intent.setType("application/zip");
+            intent.setType("*/*"); // Set a general type
+            intent.putExtra(Intent.EXTRA_MIME_TYPES, new String[]{
+                "application/zip",
+                "application/x-zip-compressed",
+                "application/x-rar-compressed",
+                "application/vnd.rar",
+                "application/x-7z-compressed"
+            });
             intent.addCategory(Intent.CATEGORY_OPENABLE);
             intent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION); // Added flag for persistable permission
             startActivityForResult(intent, PICK_FILE_REQUEST);
