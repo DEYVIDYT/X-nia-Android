@@ -119,8 +119,8 @@ public class CommunityGamesFragment extends Fragment {
         android.util.Log.d("CommunityGamesFragment", "IA Item Identifier Empty: " + itemIdentifier.isEmpty());
         android.util.Log.d("CommunityGamesFragment", "Datanodes API Key Empty: " + datanodesApiKey.isEmpty());
 
-        boolean iaKeysSet = !accessKey.isEmpty() && !secretKey.isEmpty() && !itemIdentifier.isEmpty();
-        boolean dnApiKeySet = !datanodesApiKey.isEmpty();
+        boolean iaKeysSet = (accessKey != null && !accessKey.trim().isEmpty()) && (secretKey != null && !secretKey.trim().isEmpty()) && (itemIdentifier != null && !itemIdentifier.trim().isEmpty());
+        boolean dnApiKeySet = (datanodesApiKey != null && !datanodesApiKey.trim().isEmpty());
 
         if ("internet_archive".equals(preferredService)) {
             if (!iaKeysSet) {
