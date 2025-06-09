@@ -95,9 +95,7 @@ public class CommunityGamesFragment extends Fragment {
     }
 
     private void showUploadDialog() {
-        SharedPreferences prefs = requireContext().getSharedPreferences("community_games", requireContext().MODE_PRIVATE);
-        // SharedPreferences prefs = requireContext().getSharedPreferences("community_games", requireContext().MODE_PRIVATE);
-        // It's better to use default shared preferences for app-wide settings.
+        // Use default shared preferences for app-wide settings.
         SharedPreferences prefs = PreferenceManager.getDefaultSharedPreferences(requireContext());
         String accessKey = prefs.getString("access_key", "");
         String secretKey = prefs.getString("secret_key", "");

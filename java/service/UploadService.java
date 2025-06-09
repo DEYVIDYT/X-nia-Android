@@ -7,9 +7,9 @@ import android.app.PendingIntent;
 import android.app.Service;
 import android.content.Context;
 import android.content.Intent;
-import android.content.SharedPreferences; // Added
-import androidx.preference.PreferenceManager; // Added
-import com.winlator.Download.utils.DatanodesUploader; // Added
+import android.content.SharedPreferences;
+import androidx.preference.PreferenceManager;
+import com.winlator.Download.utils.DatanodesUploader;
 import com.winlator.Download.utils.InternetArchiveUploader;
 import android.net.Uri;
 import android.os.Build;
@@ -23,14 +23,12 @@ import com.winlator.Download.MainActivity;
 import com.winlator.Download.R;
 import com.winlator.Download.db.UploadRepository;
 import com.winlator.Download.model.UploadStatus;
-import com.winlator.Download.utils.InternetArchiveUploader;
 
 import org.json.JSONObject;
 
 import java.io.BufferedReader;
-import java.io.BufferedReader;
 import java.io.File;
-import java.io.FileInputStream; // Added
+import java.io.FileInputStream;
 import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
@@ -41,11 +39,17 @@ import java.net.URL;
 import java.security.MessageDigest;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
-import android.util.Base64; // Added for MD5
-import android.database.Cursor; // Added
-import android.provider.MediaStore; // Added
+import android.util.Base64;
+import android.database.Cursor;
+import android.provider.MediaStore;
 
 public class UploadService extends Service {
+
+    private interface UnifiedUploadCallback {
+        void onProgress(long totalUploadedBytes, int overallProgress);
+        void onSuccess(String fileUrl);
+        void onError(String error);
+    }
 
     private static final String CHANNEL_ID = "upload_channel";
     private static final int NOTIFICATION_ID = 1001;
@@ -59,8 +63,7 @@ public class UploadService extends Service {
     private ExecutorService executor;
     private PowerManager.WakeLock wakeLock;
     private UploadRepository uploadRepository;
-
-    // Md5ProgressListener interface removed
+    private UnifiedUploadCallback masterCallbackHandler;
 
     @Override
     public void onCreate() {
@@ -83,21 +86,17 @@ public class UploadService extends Service {
     public int onStartCommand(Intent intent, int flags, int startId) {
         if (intent != null) {
             String gameName = intent.getStringExtra("game_name");
-            String accessKey = intent.getStringExtra("access_key"); // IA Access Key
-            String secretKey = intent.getStringExtra("secret_key");   // IA Secret Key
-            String itemIdentifier = intent.getStringExtra("item_identifier"); // IA Item Identifier
-            // Datanodes API Key, retrieved from intent (passed by CommunityGamesFragment)
+            String accessKey = intent.getStringExtra("access_key");
+            String secretKey = intent.getStringExtra("secret_key");
+            String itemIdentifier = intent.getStringExtra("item_identifier");
             String datanodesApiKey = intent.getStringExtra("datanodes_api_key");
 
             String fileUriString = intent.getStringExtra("file_uri");
             String fileName = intent.getStringExtra("file_name");
             long fileSize = intent.getLongExtra("file_size", 0);
-            int uploadId = intent.getIntExtra("upload_id", -1); // -1 if new upload
+            int uploadId = intent.getIntExtra("upload_id", -1);
 
-            // Get the selected upload destination service (e.g., "internet_archive" or "datanodes")
             String uploadDestinationService = intent.getStringExtra("upload_destination_service");
-            // Fallback: If not provided directly in intent (e.g., service restart/retry scenarios),
-            // try to get it from SharedPreferences, defaulting to "internet_archive".
             if (uploadDestinationService == null || uploadDestinationService.isEmpty()) {
                 SharedPreferences prefs = PreferenceManager.getDefaultSharedPreferences(this);
                 uploadDestinationService = prefs.getString("upload_service", "internet_archive");
@@ -111,41 +110,69 @@ public class UploadService extends Service {
             Notification preparingOrInitialNotification = createNotification("Preparando " + currentProcessGameName + "...", 0);
             startForeground(NOTIFICATION_ID, preparingOrInitialNotification);
 
-            final String finalUploadDestinationService = uploadDestinationService; // For use in lambda
+            final String finalUploadDestinationService = uploadDestinationService;
 
             executor.execute(() -> {
-                UploadStatus uploadStatus;
+                UploadStatus currentUploadStatus;
                 if (uploadId != -1) {
-                    // Existing upload, try to resume
-                    uploadStatus = uploadRepository.getUploadById(uploadId);
-                    if (uploadStatus == null) {
-                        // Should not happen if ID is valid, but handle defensively
+                    currentUploadStatus = uploadRepository.getUploadById(uploadId);
+                    if (currentUploadStatus == null) {
                         Log.e("UploadService", "UploadStatus with ID " + uploadId + " not found. Starting new upload.");
-                        uploadStatus = new UploadStatus(gameName, fileName, fileSize, accessKey, secretKey, itemIdentifier, fileUriString);
-                        // Potentially add uploadDestinationService to UploadStatus constructor or setter if it needs to be persisted
-                        long newId = uploadRepository.insertUpload(uploadStatus);
-                        uploadStatus.setId((int) newId);
+                        currentUploadStatus = new UploadStatus(gameName, fileName, fileSize, accessKey, secretKey, itemIdentifier, fileUriString);
+                        long newId = uploadRepository.insertUpload(currentUploadStatus);
+                        currentUploadStatus.setId((int) newId);
                     } else {
-                        // Update status to UPLOADING if it was PAUSED or ERROR
-                        if (uploadStatus.getStatus() == UploadStatus.Status.PAUSED || uploadStatus.getStatus() == UploadStatus.Status.ERROR) {
-                            uploadStatus.setStatus(UploadStatus.Status.UPLOADING);
-                            uploadRepository.updateUpload(uploadStatus);
+                        if (currentUploadStatus.getStatus() == UploadStatus.Status.PAUSED || currentUploadStatus.getStatus() == UploadStatus.Status.ERROR) {
+                            currentUploadStatus.setStatus(UploadStatus.Status.UPLOADING);
+                            uploadRepository.updateUpload(currentUploadStatus);
                         }
-                        // Here you could also update the stored credentials if they changed, though it's complex.
-                        // For now, we use the fresh ones from the intent.
                     }
                 } else {
-                    // New upload
-                    uploadStatus = new UploadStatus(gameName, fileName, fileSize, accessKey, secretKey, itemIdentifier, fileUriString);
-                     // Potentially add uploadDestinationService to UploadStatus here too
-                    long newId = uploadRepository.insertUpload(uploadStatus);
-                    uploadStatus.setId((int) newId);
+                    currentUploadStatus = new UploadStatus(gameName, fileName, fileSize, accessKey, secretKey, itemIdentifier, fileUriString);
+                    long newId = uploadRepository.insertUpload(currentUploadStatus);
+                    currentUploadStatus.setId((int) newId);
                 }
 
-                sendUploadBroadcast(ACTION_UPLOAD_STARTED, uploadStatus.getId(), gameName, fileName, fileSize, uploadStatus.getProgress(), null, uploadStatus.getUploadedBytes());
+                final UploadStatus effectivelyFinalUploadStatus = currentUploadStatus;
 
-                // Pass all relevant keys and the destination service to uploadGame
-                uploadGame(uploadStatus, accessKey, secretKey, itemIdentifier, datanodesApiKey, finalUploadDestinationService, Uri.parse(fileUriString));
+                this.masterCallbackHandler = new UnifiedUploadCallback() {
+                    @Override
+                    public void onProgress(long totalUploadedBytes, int overallProgress) {
+                        effectivelyFinalUploadStatus.setUploadedBytes(totalUploadedBytes);
+                        effectivelyFinalUploadStatus.setProgress(overallProgress);
+                        effectivelyFinalUploadStatus.setStatus(UploadStatus.Status.UPLOADING);
+                        uploadRepository.updateUpload(effectivelyFinalUploadStatus);
+
+                        String notificationText = "Enviando " + effectivelyFinalUploadStatus.getGameName() + "...";
+                        if (overallProgress == 100 && DATANODES_SERVICE_ID.equals(finalUploadDestinationService)) {
+                             notificationText = "Finalizando upload de " + effectivelyFinalUploadStatus.getGameName() + "...";
+                        } else if (overallProgress == 100) {
+                            notificationText = "Verificando upload de " + effectivelyFinalUploadStatus.getGameName() + "...";
+                        }
+                        updateNotification(notificationText, overallProgress);
+                        sendUploadBroadcast(ACTION_UPLOAD_PROGRESS, effectivelyFinalUploadStatus.getId(), effectivelyFinalUploadStatus.getGameName(), effectivelyFinalUploadStatus.getFileName(), effectivelyFinalUploadStatus.getFileSize(), overallProgress, null, totalUploadedBytes);
+                    }
+
+                    @Override
+                    public void onSuccess(String fileUrl) {
+                        sendToPhpApi(effectivelyFinalUploadStatus, fileUrl);
+                    }
+
+                    @Override
+                    public void onError(String error) {
+                        Log.e("UploadService", "Erro no upload (" + finalUploadDestinationService + ") de " + effectivelyFinalUploadStatus.getGameName() + ": " + error);
+                        String errorMsg = "Erro no upload ("+finalUploadDestinationService+") de " + effectivelyFinalUploadStatus.getGameName() + ": " + error;
+                        showErrorNotification(errorMsg);
+                        effectivelyFinalUploadStatus.setStatus(UploadStatus.Status.ERROR);
+                        effectivelyFinalUploadStatus.setErrorMessage(errorMsg);
+                        uploadRepository.updateUpload(effectivelyFinalUploadStatus);
+                        sendUploadBroadcast(ACTION_UPLOAD_ERROR, effectivelyFinalUploadStatus.getId(), effectivelyFinalUploadStatus.getGameName(), effectivelyFinalUploadStatus.getFileName(), effectivelyFinalUploadStatus.getFileSize(), 0, errorMsg, effectivelyFinalUploadStatus.getUploadedBytes());
+                        stopSelf();
+                    }
+                };
+
+                sendUploadBroadcast(ACTION_UPLOAD_STARTED, effectivelyFinalUploadStatus.getId(), gameName, fileName, fileSize, effectivelyFinalUploadStatus.getProgress(), null, effectivelyFinalUploadStatus.getUploadedBytes());
+                uploadGame(effectivelyFinalUploadStatus, accessKey, secretKey, itemIdentifier, datanodesApiKey, finalUploadDestinationService, Uri.parse(fileUriString));
             });
         }
         return START_NOT_STICKY;
@@ -158,195 +185,131 @@ public class UploadService extends Service {
             wakeLock.acquire();
         }
 
-        InputStream inputStreamForUpload = null;
+        InputStream streamToUpload = null; // Renamed for clarity
+        final long initialBytesSkipped = uploadStatus.getUploadedBytes(); // Bytes already uploaded before this attempt
+
         try {
             updateNotification("Enviando " + uploadStatus.getGameName() + "...", uploadStatus.getProgress());
             Log.d("UploadService", "Using URI stream for upload: " + fileUri.toString());
-            inputStreamForUpload = getContentResolver().openInputStream(fileUri);
-            if (inputStreamForUpload == null) {
+            streamToUpload = getContentResolver().openInputStream(fileUri);
+            if (streamToUpload == null) {
                 throw new IOException("Não foi possível abrir InputStream para URI: " + fileUri.toString());
             }
 
-            // Handle resuming upload by skipping bytes from the input stream if previously uploaded bytes > 0.
-            // This is generic for both uploaders as it manipulates the common input stream.
-            if (uploadStatus.getUploadedBytes() > 0) {
-                long actualSkipped = inputStreamForUpload.skip(uploadStatus.getUploadedBytes());
-                if (actualSkipped != uploadStatus.getUploadedBytes()) {
-                    // If skipping fails or doesn't skip the full amount, log a warning and restart the upload from the beginning.
-                    Log.w("UploadService", "Falha ao pular bytes para resumo. Esperado: " + uploadStatus.getUploadedBytes() + ", pulado: " + actualSkipped + ". Reiniciando upload do URI para " + destinationService);
-                    try { inputStreamForUpload.close(); } catch (IOException e) { Log.e("UploadService", "Error closing stream on partial skip URI", e); }
-                    inputStreamForUpload = getContentResolver().openInputStream(fileUri); // Re-open the stream
-                    if (inputStreamForUpload == null) {
+            if (initialBytesSkipped > 0) {
+                long actualSkipped = streamToUpload.skip(initialBytesSkipped);
+                if (actualSkipped != initialBytesSkipped) {
+                    Log.w("UploadService", "Falha ao pular bytes para resumo. Esperado: " + initialBytesSkipped + ", pulado: " + actualSkipped + ". Reiniciando upload.");
+                    try { streamToUpload.close(); } catch (IOException e) { Log.e("UploadService", "Error closing stream on partial skip", e); }
+                    streamToUpload = getContentResolver().openInputStream(fileUri);
+                    if (streamToUpload == null) {
                          throw new IOException("Não foi possível reabrir InputStream para URI após falha no skip: " + fileUri.toString());
                     }
                     // Reset persisted progress as we are starting over for this attempt.
-                    uploadStatus.setUploadedBytes(0);
-                    uploadStatus.setProgress(0);
-                    uploadRepository.updateUpload(uploadStatus);
+                    if (masterCallbackHandler != null) { // Update progress via master callback
+                        masterCallbackHandler.onProgress(0, 0);
+                    } else { // Fallback if masterCallbackHandler is null (should not happen)
+                        uploadStatus.setUploadedBytes(0);
+                        uploadStatus.setProgress(0);
+                        uploadRepository.updateUpload(uploadStatus);
+                    }
                 } else {
                     Log.d("UploadService", "Resumed upload from byte " + actualSkipped + " for " + destinationService);
                 }
             }
 
-            // Make the inputStream final so it can be accessed within anonymous callback classes.
-            final InputStream finalInputStreamForUpload = inputStreamForUpload;
+            // Ensure masterCallbackHandler is not null before proceeding
+            if (this.masterCallbackHandler == null) {
+                throw new IllegalStateException("masterCallbackHandler is not initialized.");
+            }
 
-            // Generic callback handler object.
-            // This object's methods (onProgress, onSuccess, onError) are called by the specific uploader callbacks.
-            // This allows common logic for updating notifications, database, and broadcasts.
-            Object genericCallback = new Object() { // Effectively an anonymous class defining the callback structure.
-                /**
-                 * Handles progress updates from either uploader.
-                 * @param newUploadedBytes Absolute number of bytes uploaded for the file.
-                 * @param overallProgress Overall percentage progress for the file.
-                 */
-                public void onProgress(long newUploadedBytes, int overallProgress) {
-                    uploadStatus.setUploadedBytes(newUploadedBytes);
-                    uploadStatus.setProgress(overallProgress);
-                    uploadStatus.setStatus(UploadStatus.Status.UPLOADING);
-                    uploadRepository.updateUpload(uploadStatus);
+            final InputStream finalStreamToUpload = streamToUpload; // Make it final for use in anonymous classes
 
-                    String notificationText = "Enviando " + uploadStatus.getGameName() + "...";
-                    // Customize notification text for Datanodes when it reaches 100% as it might not have a separate verification step.
-                    if (overallProgress == 100 && DATANODES_SERVICE_ID.equals(destinationService)) {
-                         notificationText = "Finalizando upload de " + uploadStatus.getGameName() + "...";
-                    } else if (overallProgress == 100) { // For Internet Archive, 100% means verification starts.
-                        notificationText = "Verificando upload de " + uploadStatus.getGameName() + "...";
-                    }
-                    updateNotification(notificationText, overallProgress);
-                    sendUploadBroadcast(ACTION_UPLOAD_PROGRESS, uploadStatus.getId(), uploadStatus.getGameName(), uploadStatus.getFileName(), uploadStatus.getFileSize(), overallProgress, null, newUploadedBytes);
-                }
-
-                /**
-                 * Handles successful upload from either uploader.
-                 * @param fileUrl The URL of the successfully uploaded file.
-                 */
-                public void onSuccess(String fileUrl) {
-                    try { if (finalInputStreamForUpload != null) finalInputStreamForUpload.close(); } catch (java.io.IOException e) { android.util.Log.e("UploadService", "Error closing stream in onSuccess", e); }
-                    sendToPhpApi(uploadStatus, fileUrl); // Proceed to register the game with the backend.
-                }
-
-                /**
-                 * Handles errors from either uploader.
-                 * @param error The error message.
-                 */
-                public void onError(String error) {
-                    try { if (finalInputStreamForUpload != null) finalInputStreamForUpload.close(); } catch (java.io.IOException e) { android.util.Log.e("UploadService", "Error closing stream in onError", e); }
-                    Log.e("UploadService", "Erro no upload (" + destinationService + ") de " + uploadStatus.getGameName() + ": " + error);
-                    String errorMsg = "Erro no upload ("+destinationService+") de " + uploadStatus.getGameName() + ": " + error; // Include service in user-facing error
-                    showErrorNotification(errorMsg);
-                    uploadStatus.setStatus(UploadStatus.Status.ERROR);
-                    uploadStatus.setErrorMessage(errorMsg); // Store specific error
-                    uploadRepository.updateUpload(uploadStatus);
-                    sendUploadBroadcast(ACTION_UPLOAD_ERROR, uploadStatus.getId(), uploadStatus.getGameName(), uploadStatus.getFileName(), uploadStatus.getFileSize(), 0, errorMsg, uploadStatus.getUploadedBytes());
-                    stopSelf(); // Stop the service on error.
-                }
-            };
-
-            // Conditional instantiation and use of the uploader based on `destinationService`.
             if (DATANODES_SERVICE_ID.equals(destinationService)) {
-                // Upload to Datanodes.to
                 Log.d("UploadService", "Starting upload to Datanodes.to for: " + uploadStatus.getGameName());
-                // Check for Datanodes API key presence.
                 if (dnApiKey == null || dnApiKey.isEmpty()) {
                     throw new IllegalArgumentException("Datanodes.to API Key is missing.");
                 }
                 DatanodesUploader datanodesUploader = new DatanodesUploader(dnApiKey);
-                // `initialUploadedBytesForDatanodes` is the amount already skipped from the stream.
-                final long initialUploadedBytesForDatanodes = uploadStatus.getUploadedBytes();
-
                 datanodesUploader.uploadFile(
-                    finalInputStreamForUpload, // The stream, potentially advanced by skip()
-                    uploadStatus.getFileSize(), // Total file size
+                    finalStreamToUpload,
+                    uploadStatus.getFileSize(),
                     uploadStatus.getFileName(),
-                    // Specific callback for DatanodesUploader
                     new DatanodesUploader.UploadCallback() {
                         @Override
-                        public void onProgress(long uploadedBytesFromCallback, int progressFromCallback) {
-                            // `uploadedBytesFromCallback` from DatanodesUploader is the total bytes processed in its current attempt
-                            // (i.e., since its `uploadFile` was called, after the initial skip).
-                            // `progressFromCallback` is the percentage of this current attempt.
-                            // To get the absolute uploaded bytes for the file, add `initialUploadedBytesForDatanodes`.
-                            long absoluteUploadedBytes = initialUploadedBytesForDatanodes + uploadedBytesFromCallback;
-                            // Calculate overall progress based on the absolute uploaded bytes and total file size.
-                            int overallProgress = (int) ((absoluteUploadedBytes * 100) / uploadStatus.getFileSize());
-                            // Call the generic progress handler.
-                            ((Object{public void onProgress(long l,int i); public void onSuccess(String s); public void onError(String s);})genericCallback).onProgress(absoluteUploadedBytes, overallProgress);
+                        public void onProgress(long uploadedBytesFromDatanodes, int progressFromDatanodes) {
+                            long totalUploadedBytes = initialBytesSkipped + uploadedBytesFromDatanodes;
+                            int overallProgress = (uploadStatus.getFileSize() > 0) ? (int) ((totalUploadedBytes * 100) / uploadStatus.getFileSize()) : progressFromDatanodes;
+                            masterCallbackHandler.onProgress(totalUploadedBytes, overallProgress);
                         }
                         @Override
                         public void onSuccess(String fileUrl) {
-                            ((Object{public void onProgress(long l,int i); public void onSuccess(String s); public void onError(String s);})genericCallback).onSuccess(fileUrl);
+                            masterCallbackHandler.onSuccess(fileUrl);
                         }
                         @Override
                         public void onError(String error) {
-                             ((Object{public void onProgress(long l,int i); public void onSuccess(String s); public void onError(String s);})genericCallback).onError(error);
+                            masterCallbackHandler.onError(error);
                         }
                     }
                 );
 
             } else { // Default to Internet Archive
                 Log.d("UploadService", "Starting upload to Internet Archive for: " + uploadStatus.getGameName());
-                // Check for Internet Archive credential presence.
                 if (iaAccessKey == null || iaAccessKey.isEmpty() || iaSecretKey == null || iaSecretKey.isEmpty() || iaItemIdentifier == null || iaItemIdentifier.isEmpty()) {
-                     throw new IllegalArgumentException("Internet Archive credentials (access key, secret key, or item identifier) are missing.");
+                     throw new IllegalArgumentException("Internet Archive credentials are missing.");
                 }
                 InternetArchiveUploader internetArchiveUploader = new InternetArchiveUploader(iaAccessKey, iaSecretKey, iaItemIdentifier);
-                // `streamStartOffsetForIA` is the number of bytes already uploaded in previous attempts (i.e., already skipped from the stream).
-                // This is crucial for IA's resumable upload mechanism.
-                final long streamStartOffsetForIA = uploadStatus.getUploadedBytes();
-
                 internetArchiveUploader.uploadFile(
-                    finalInputStreamForUpload, // The stream, potentially advanced by skip()
-                    uploadStatus.getFileSize(), // Total file size
+                    finalStreamToUpload,
+                    uploadStatus.getFileSize(),
                     uploadStatus.getFileName(),
-                    null, // md5Hash is not used in this setup
-                    streamStartOffsetForIA, // Offset from which IA should start/consider this chunk
-                    // Specific callback for InternetArchiveUploader
+                    null,
+                    initialBytesSkipped, // This is the streamStartOffset for IA
                     new InternetArchiveUploader.UploadCallback() {
                          @Override
-                        public void onProgress(long uploadedBytesInChunk, int progressOfChunk) {
-                            // `uploadedBytesInChunk` from IA Uploader is the number of bytes uploaded *in the current chunk/call*.
-                            // `progressOfChunk` is the percentage of this current chunk.
-                            // To get the absolute total bytes uploaded for the file, add `streamStartOffsetForIA`.
-                            long absoluteUploadedBytes = streamStartOffsetForIA + uploadedBytesInChunk;
-                            // Calculate overall progress based on the absolute uploaded bytes.
-                            int overallProgress = (int) ((absoluteUploadedBytes * 100) / uploadStatus.getFileSize());
-                            // Call the generic progress handler.
-                            ((Object{public void onProgress(long l,int i); public void onSuccess(String s); public void onError(String s);})genericCallback).onProgress(absoluteUploadedBytes, overallProgress);
+                        public void onProgress(long newTotalUploadedBytesByIA, int progressReportedByIA) {
+                            // InternetArchiveUploader's onProgress 'uploadedBytes' is already the total for the file
+                            masterCallbackHandler.onProgress(newTotalUploadedBytesByIA, progressReportedByIA);
                         }
                         @Override
                         public void onSuccess(String fileUrl) {
-                            ((Object{public void onProgress(long l,int i); public void onSuccess(String s); public void onError(String s);})genericCallback).onSuccess(fileUrl);
+                            masterCallbackHandler.onSuccess(fileUrl);
                         }
                         @Override
                         public void onError(String error) {
-                            ((Object{public void onProgress(long l,int i); public void onSuccess(String s); public void onError(String s);})genericCallback).onError(error);
+                            masterCallbackHandler.onError(error);
                         }
                     }
                 );
             }
 
-        } catch (Throwable t) { // Catch any other Throwables (includes Exceptions and Errors)
-            Log.e("UploadService", "Erro geral EXCEPTION/THROWABLE no upload de " + uploadStatus.getGameName() + " para " + destinationService + ": " + t.getMessage(), t);
-            String errorMsgForUser = "Erro crítico no upload (" + destinationService + ") de " + uploadStatus.getGameName() + ": " + t.getMessage();
-            showErrorNotification(errorMsgForUser); // Show error notification to user
-            // Update status in database
-            uploadStatus.setStatus(UploadStatus.Status.ERROR);
-            uploadStatus.setErrorMessage(errorMsgForUser);
-            uploadRepository.updateUpload(uploadStatus);
-            // Send error broadcast
-            sendUploadBroadcast(ACTION_UPLOAD_ERROR, uploadStatus.getId(), uploadStatus.getGameName(), uploadStatus.getFileName(), uploadStatus.getFileSize(), 0, errorMsgForUser, uploadStatus.getUploadedBytes());
-
-            // Ensure stream is closed on error
-            if (inputStreamForUpload != null) {
+        } catch (Throwable t) {
+            Log.e("UploadService", "Critical error in uploadGame for " + destinationService + ": " + t.getMessage(), t);
+            String errorMsgForUser = "Erro crítico no upload (" + destinationService + "): " + t.getMessage();
+            if (this.masterCallbackHandler != null) {
+                this.masterCallbackHandler.onError(errorMsgForUser);
+            } else { // Fallback if masterCallbackHandler somehow null
+                showErrorNotification(errorMsgForUser);
+                uploadStatus.setStatus(UploadStatus.Status.ERROR);
+                uploadStatus.setErrorMessage(errorMsgForUser);
+                uploadRepository.updateUpload(uploadStatus);
+                sendUploadBroadcast(ACTION_UPLOAD_ERROR, uploadStatus.getId(), uploadStatus.getGameName(), uploadStatus.getFileName(), uploadStatus.getFileSize(), 0, errorMsgForUser, uploadStatus.getUploadedBytes());
+                stopSelf();
+            }
+        } finally {
+            // Ensure the input stream is closed if it was opened.
+            // The uploader callbacks (onSuccess/onError) are now responsible for signaling completion,
+            // and the masterCallbackHandler's onSuccess/onError might trigger service stop or other actions.
+            // Closing the stream here ensures it's closed even if an exception occurs before uploader starts
+            // or if the uploader itself doesn't close it.
+            if (streamToUpload != null) {
                 try {
-                    inputStreamForUpload.close();
-                } catch (java.io.IOException e) {
-                    android.util.Log.e("UploadService", "Error closing inputStreamForUpload in main catch block", e);
+                    streamToUpload.close();
+                    Log.d("UploadService", "InputStream closed in uploadGame finally block for " + destinationService);
+                } catch (IOException e) {
+                    Log.e("UploadService", "Error closing InputStream in uploadGame finally block for " + destinationService, e);
                 }
             }
-            stopSelf(); // Stop the service on critical error.
-        } finally {
             if (wakeLock != null && wakeLock.isHeld()) {
                 Log.d("UploadService", "Releasing WakeLock for upload: " + uploadStatus.getGameName());
                 wakeLock.release();
@@ -360,7 +323,7 @@ public class UploadService extends Service {
         }
 
         Cursor cursor = null;
-        final String column = "_data"; // MediaStore.Downloads.COLUMN_DATA
+        final String column = "_data";
         final String[] projection = { column };
         String path = null;
 
@@ -378,7 +341,6 @@ public class UploadService extends Service {
         }
 
         if (id == null || !android.text.TextUtils.isDigitsOnly(id)) {
-             // android.util.Log.w("UploadService", "Download URI ID is not simple numeric, direct path query might fail: " + id);
         }
 
         if (id != null) {
@@ -387,7 +349,7 @@ public class UploadService extends Service {
                  if (android.text.TextUtils.isDigitsOnly(id)) {
                     cursor = context.getContentResolver().query(contentUri, projection, "_id=?", new String[]{id}, null);
                  } else {
-                    android.util.Log.w("UploadService", "Non-numeric ID for Download URI, _id query unlikely to work: " + id);
+                    Log.w("UploadService", "Non-numeric ID for Download URI, _id query unlikely to work: " + id);
                  }
 
                 if (cursor != null && cursor.moveToFirst()) {
@@ -395,7 +357,7 @@ public class UploadService extends Service {
                     path = cursor.getString(columnIndex);
                 }
             } catch (Exception e) {
-                android.util.Log.e("UploadService", "Error querying MediaStore for Download URI path", e);
+                Log.e("UploadService", "Error querying MediaStore for Download URI path", e);
                 path = null;
             } finally {
                 if (cursor != null) {
@@ -411,11 +373,9 @@ public class UploadService extends Service {
         return path;
     }
 
-    // copyUriToTempFileInternal method removed
-    // calculateMd5FromFile method removed
-    // calculateMd5FromUri method removed
-
-    private void sendToPhpApi(UploadStatus uploadStatus, String gameUrl) { // File tempFile parameter removed
+    private void sendToPhpApi(UploadStatus uploadStatus, String gameUrl) {
+        // This method is called from masterCallbackHandler.onSuccess
+        // Stream closure should have been handled before this point or by the uploader.
         try {
             updateNotification("Registrando arquivo " + uploadStatus.getGameName() + "...", 100);
 
@@ -452,38 +412,25 @@ public class UploadService extends Service {
                     uploadStatus.setProgress(100);
                     uploadRepository.updateUpload(uploadStatus);
                     sendUploadBroadcast(ACTION_UPLOAD_COMPLETED, uploadStatus.getId(), uploadStatus.getGameName(), uploadStatus.getFileName(), uploadStatus.getFileSize(), 100, null, uploadStatus.getUploadedBytes());
+                    stopSelf(); // Stop service on full completion
                 } else {
-                    String error = "Erro na API para " + uploadStatus.getGameName() + ": " + responseJson.getString("message");
-                    showErrorNotification(error);
-                    uploadStatus.setStatus(UploadStatus.Status.ERROR);
-                    uploadStatus.setErrorMessage(error);
-                    uploadRepository.updateUpload(uploadStatus);
-                    sendUploadBroadcast(ACTION_UPLOAD_ERROR, uploadStatus.getId(), uploadStatus.getGameName(), uploadStatus.getFileName(), uploadStatus.getFileSize(), 0, responseJson.getString("message"), uploadStatus.getUploadedBytes());
+                    String error = "Erro na API (PHP) para " + uploadStatus.getGameName() + ": " + responseJson.getString("message");
+                    // Use masterCallbackHandler for consistency, though it will call stopSelf again.
+                    if (this.masterCallbackHandler != null) this.masterCallbackHandler.onError(error);
+                    else { /* Should not happen if masterCallbackHandler is always initialized */ }
                 }
             } else {
-                String error = "Erro na API para " + uploadStatus.getGameName() + ": Código " + responseCode;
-                showErrorNotification(error);
-                uploadStatus.setStatus(UploadStatus.Status.ERROR);
-                uploadStatus.setErrorMessage(error);
-                uploadRepository.updateUpload(uploadStatus);
-                sendUploadBroadcast(ACTION_UPLOAD_ERROR, uploadStatus.getId(), uploadStatus.getGameName(), uploadStatus.getFileName(), uploadStatus.getFileSize(), 0, "Código de erro: " + responseCode, uploadStatus.getUploadedBytes());
+                String error = "Erro na API (PHP) para " + uploadStatus.getGameName() + ": Código " + responseCode;
+                if (this.masterCallbackHandler != null) this.masterCallbackHandler.onError(error);
+                else { /* Should not happen */ }
             }
-
             connection.disconnect();
-            // tempFile.delete(); // Removed
-
         } catch (Exception e) {
             Log.e("UploadService", "Erro na API PHP para " + uploadStatus.getGameName() + ": " + e.getMessage());
-            String error = "Erro na API para " + uploadStatus.getGameName() + ": " + e.getMessage();
-            showErrorNotification(error);
-            uploadStatus.setStatus(UploadStatus.Status.ERROR);
-            uploadStatus.setErrorMessage(error);
-            uploadRepository.updateUpload(uploadStatus);
-            sendUploadBroadcast(ACTION_UPLOAD_ERROR, uploadStatus.getId(), uploadStatus.getGameName(), uploadStatus.getFileName(), uploadStatus.getFileSize(), 0, e.getMessage(), uploadStatus.getUploadedBytes());
-            // tempFile.delete(); // Removed
+            String error = "Erro durante comunicação com API (PHP) para " + uploadStatus.getGameName() + ": " + e.getMessage();
+            if (this.masterCallbackHandler != null) this.masterCallbackHandler.onError(error);
+            else { /* Should not happen */ }
         }
-
-        stopSelf();
     }
 
     private void sendUploadBroadcast(String action, int id, String gameName, String fileName, long fileSize, int progress, String error, long uploadedBytes) {
@@ -599,4 +546,3 @@ public class UploadService extends Service {
         }
     }
 }
-
