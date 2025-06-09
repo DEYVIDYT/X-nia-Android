@@ -103,24 +103,56 @@ public class CommunityGamesFragment extends Fragment {
         String datanodesApiKey = prefs.getString("datanodes_api_key", "");
         String preferredService = prefs.getString("upload_service", "internet_archive");
 
-        // Check if credentials for the default or selected service are configured.
-        // This logic might need to be more nuanced depending on how you want to guide the user.
-        // For now, we'll keep the Internet Archive check as a basic guard.
-        // A more robust check would verify credentials based on the 'preferredService'.
-        if ("internet_archive".equals(preferredService) && (accessKey.isEmpty() || secretKey.isEmpty() || itemIdentifier.isEmpty())) {
-            Toast.makeText(getContext(), "Configure as credenciais do Internet Archive nas configurações.", Toast.LENGTH_LONG).show();
-            Intent intent = new Intent(getContext(), SettingsActivity.class);
-            intent.putExtra("highlight_preference_key", "access_key"); // Optional: to guide user
-            startActivity(intent);
-            return;
-        } else if ("datanodes".equals(preferredService) && datanodesApiKey.isEmpty()) {
-            Toast.makeText(getContext(), "Configure a API Key do Datanodes.to nas configurações.", Toast.LENGTH_LONG).show();
-            Intent intent = new Intent(getContext(), SettingsActivity.class);
-            intent.putExtra("highlight_preference_key", "datanodes_api_key"); // Optional
-            startActivity(intent);
-            return;
-        }
+        // Logging for debugging preferences
+        android.util.Log.d("CommunityGamesFragment", "Upload Dialog Check:");
+        android.util.Log.d("CommunityGamesFragment", "Preferred Service: '" + preferredService + "'");
+        android.util.Log.d("CommunityGamesFragment", "IA Access Key Empty: " + accessKey.isEmpty());
+        android.util.Log.d("CommunityGamesFragment", "IA Secret Key Empty: " + secretKey.isEmpty());
+        android.util.Log.d("CommunityGamesFragment", "IA Item Identifier Empty: " + itemIdentifier.isEmpty());
+        android.util.Log.d("CommunityGamesFragment", "Datanodes API Key Empty: " + datanodesApiKey.isEmpty());
 
+        // New credential checking logic
+        android.util.Log.d("CommunityGamesFragment", "Pre-Dialog Check (New Logic):");
+        android.util.Log.d("CommunityGamesFragment", "Preferred Service: '" + preferredService + "'");
+        android.util.Log.d("CommunityGamesFragment", "IA Access Key Empty: " + accessKey.isEmpty());
+        android.util.Log.d("CommunityGamesFragment", "IA Secret Key Empty: " + secretKey.isEmpty());
+        android.util.Log.d("CommunityGamesFragment", "IA Item Identifier Empty: " + itemIdentifier.isEmpty());
+        android.util.Log.d("CommunityGamesFragment", "Datanodes API Key Empty: " + datanodesApiKey.isEmpty());
+
+        boolean iaKeysSet = !accessKey.isEmpty() && !secretKey.isEmpty() && !itemIdentifier.isEmpty();
+        boolean dnApiKeySet = !datanodesApiKey.isEmpty();
+
+        if ("internet_archive".equals(preferredService)) {
+            if (!iaKeysSet) {
+                Toast.makeText(getContext(), "Seu serviço preferido (Internet Archive) não está configurado. Por favor, verifique as Configurações.", Toast.LENGTH_LONG).show();
+                Intent intent = new Intent(getContext(), SettingsActivity.class);
+                intent.putExtra("highlight_preference_key", "access_key"); // Optional
+                startActivity(intent);
+                return;
+            }
+        } else if ("datanodes".equals(preferredService)) {
+            if (!dnApiKeySet) {
+                Toast.makeText(getContext(), "Seu serviço preferido (Datanodes.to) não está configurado. Por favor, verifique as Configurações.", Toast.LENGTH_LONG).show();
+                Intent intent = new Intent(getContext(), SettingsActivity.class);
+                intent.putExtra("highlight_preference_key", "datanodes_api_key"); // Optional
+                startActivity(intent);
+                return;
+            }
+        } else {
+            // This case handles if preferredService is somehow not one of the expected values.
+            // Check if at least one service is configured. If not, prompt to configure.
+            if (!iaKeysSet && !dnApiKeySet) {
+                 Toast.makeText(getContext(), "Nenhum serviço de upload está configurado. Por favor, configure um nas Configurações.", Toast.LENGTH_LONG).show();
+                Intent intent = new Intent(getContext(), SettingsActivity.class);
+                startActivity(intent);
+                return;
+            }
+            // If preferredService was some unexpected value, but at least one service IS configured,
+            // we log it and proceed. The spinner in the dialog will default (likely to IA due to getString default).
+            android.util.Log.w("CommunityGamesFragment", "Preferred service value ('" + preferredService + "') is unexpected, but proceeding as at least one service is configured.");
+        }
+        // If we reach here, the preferred service is configured, or an unexpected preferredService value was encountered but another service was found to be configured.
+        // Proceed to show dialog...
 
         AlertDialog.Builder builder = new AlertDialog.Builder(getContext());
         View dialogView = LayoutInflater.from(getContext()).inflate(R.layout.dialog_upload_game, null);
