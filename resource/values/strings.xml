@@ -1,5 +1,19 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
+    <!-- ... existing strings ... -->
+    <string name="upload_service_title">Serviço de Upload Preferido</string>
+    <string name="datanodes_api_key_title">Datanodes.to API Key</string>
+    <string name="datanodes_api_key_summary">Insira sua API Key do Datanodes.to</string>
+
+    <string-array name="upload_service_entries">
+        <item>Internet Archive</item>
+        <item>Datanodes.to</item>
+    </string-array>
+
+    <string-array name="upload_service_values">
+        <item>internet_archive</item>
+        <item>datanodes</item>
+    </string-array>
     <string name="app_name">Winlator Download</string>
     <string name="download">Download</string>
     <string name="error_loading_versions">Falha ao carregar versões. Verifique sua conexão.</string>

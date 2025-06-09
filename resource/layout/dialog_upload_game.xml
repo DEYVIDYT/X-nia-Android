@@ -41,8 +41,23 @@
         android:text="Nenhum arquivo selecionado"
         android:textSize="14sp"
         android:textColor="?attr/colorOnSurfaceVariant"
-        android:layout_marginBottom="24dp"
+        android:layout_marginBottom="16dp"
         android:gravity="center" />
+
+    <TextView
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="Enviar para:"
+        android:textSize="14sp"
+        android:layout_marginBottom="8dp"/>
+
+    <Spinner
+        android:id="@+id/spinner_upload_destination"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginBottom="24dp"
+        android:paddingTop="8dp"
+        android:paddingBottom="8dp"/>
 
     <LinearLayout
         android:layout_width="match_parent"
@@ -68,4 +83,3 @@
     </LinearLayout>
 
 </LinearLayout>
-

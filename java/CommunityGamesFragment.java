@@ -15,10 +15,13 @@ import android.view.View;
 import android.view.ViewGroup;
 import android.widget.Button;
 import android.widget.EditText;
+import android.widget.Spinner;
+import android.widget.ArrayAdapter;
 import android.widget.TextView;
 import android.widget.Toast;
 
 import androidx.annotation.NonNull;
+import androidx.preference.PreferenceManager;
 import androidx.annotation.Nullable;
 import androidx.fragment.app.Fragment;
 import androidx.recyclerview.widget.LinearLayoutManager;
@@ -62,6 +65,7 @@ public class CommunityGamesFragment extends Fragment {
     private EditText etDialogGameName;
     private TextView tvDialogSelectedFile;
     private Button btnDialogUpload;
+    private Spinner spinnerUploadDestination; // Added for the spinner
 
     @Nullable
     @Override
@@ -92,16 +96,33 @@ public class CommunityGamesFragment extends Fragment {
 
     private void showUploadDialog() {
         SharedPreferences prefs = requireContext().getSharedPreferences("community_games", requireContext().MODE_PRIVATE);
+        // SharedPreferences prefs = requireContext().getSharedPreferences("community_games", requireContext().MODE_PRIVATE);
+        // It's better to use default shared preferences for app-wide settings.
+        SharedPreferences prefs = PreferenceManager.getDefaultSharedPreferences(requireContext());
         String accessKey = prefs.getString("access_key", "");
         String secretKey = prefs.getString("secret_key", "");
         String itemIdentifier = prefs.getString("item_identifier", "");
+        String datanodesApiKey = prefs.getString("datanodes_api_key", "");
+        String preferredService = prefs.getString("upload_service", "internet_archive");
 
-        if (accessKey.isEmpty() || secretKey.isEmpty() || itemIdentifier.isEmpty()) {
-            Toast.makeText(getContext(), "Configure primeiro as credenciais do Internet Archive nas configurações", Toast.LENGTH_LONG).show();
+        // Check if credentials for the default or selected service are configured.
+        // This logic might need to be more nuanced depending on how you want to guide the user.
+        // For now, we'll keep the Internet Archive check as a basic guard.
+        // A more robust check would verify credentials based on the 'preferredService'.
+        if ("internet_archive".equals(preferredService) && (accessKey.isEmpty() || secretKey.isEmpty() || itemIdentifier.isEmpty())) {
+            Toast.makeText(getContext(), "Configure as credenciais do Internet Archive nas configurações.", Toast.LENGTH_LONG).show();
             Intent intent = new Intent(getContext(), SettingsActivity.class);
+            intent.putExtra("highlight_preference_key", "access_key"); // Optional: to guide user
+            startActivity(intent);
+            return;
+        } else if ("datanodes".equals(preferredService) && datanodesApiKey.isEmpty()) {
+            Toast.makeText(getContext(), "Configure a API Key do Datanodes.to nas configurações.", Toast.LENGTH_LONG).show();
+            Intent intent = new Intent(getContext(), SettingsActivity.class);
+            intent.putExtra("highlight_preference_key", "datanodes_api_key"); // Optional
             startActivity(intent);
             return;
         }
+
 
         AlertDialog.Builder builder = new AlertDialog.Builder(getContext());
         View dialogView = LayoutInflater.from(getContext()).inflate(R.layout.dialog_upload_game, null);
@@ -114,6 +135,28 @@ public class CommunityGamesFragment extends Fragment {
         this.tvDialogSelectedFile = dialogView.findViewById(R.id.tv_dialog_selected_file);
         Button btnCancel = dialogView.findViewById(R.id.btn_dialog_cancel);
         this.btnDialogUpload = dialogView.findViewById(R.id.btn_dialog_upload);
+        this.spinnerUploadDestination = dialogView.findViewById(R.id.spinner_upload_destination); // Initialize spinner for upload destination choice
+
+        // Setup Spinner for upload destination:
+        // 1. Create an ArrayAdapter using the string array R.array.upload_service_entries (display names like "Internet Archive", "Datanodes.to")
+        //    and a default spinner layout.
+        ArrayAdapter<CharSequence> adapter = ArrayAdapter.createFromResource(requireContext(),
+                R.array.upload_service_entries, android.R.layout.simple_spinner_item);
+        // 2. Specify the layout to use when the list of choices appears.
+        adapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item);
+        // 3. Apply the adapter to the spinner.
+        spinnerUploadDestination.setAdapter(adapter);
+
+        // Set default Spinner selection based on the user's preferred upload service stored in SharedPreferences.
+        // 'preferredService' was retrieved from SharedPreferences earlier in this method.
+        // 'serviceValues' (e.g., ["internet_archive", "datanodes"]) corresponds to R.array.upload_service_values.
+        final String[] serviceValues = getResources().getStringArray(R.array.upload_service_values);
+        for (int i = 0; i < serviceValues.length; i++) {
+            if (serviceValues[i].equals(preferredService)) {
+                spinnerUploadDestination.setSelection(i); // Set the spinner to the preferred service
+                break;
+            }
+        }
 
         selectedFileUri = null;
         selectedFileName = null;
@@ -162,24 +205,40 @@ public class CommunityGamesFragment extends Fragment {
             }
 
             // Create and save UploadStatus to DB first
-            UploadStatus newUpload = new UploadStatus(gameName, selectedFileName, selectedFileSize, accessKey, secretKey, itemIdentifier, selectedFileUri.toString());
-            long uploadId = uploadRepository.insertUpload(newUpload);
-            newUpload.setId((int) uploadId);
+            // UploadStatus newUpload = new UploadStatus(gameName, selectedFileName, selectedFileSize, accessKey, secretKey, itemIdentifier, selectedFileUri.toString());
+            // The UploadStatus constructor and DB interaction might need to be updated if they store service-specific credentials.
+            // For now, we assume UploadService handles credential retrieval based on the selected service.
+            // long uploadId = uploadRepository.insertUpload(newUpload);
+            // newUpload.setId((int) uploadId);
 
-            // Start upload service
+            // Get the selected upload service value (e.g., "internet_archive", "datanodes") from the Spinner.
+            // serviceValues (R.array.upload_service_values) is used here to get the actual value string.
+            String selectedUploadServiceValue = serviceValues[spinnerUploadDestination.getSelectedItemPosition()];
+
+            // Start UploadService Intent
             Intent uploadIntent = new Intent(getContext(), UploadService.class);
-            uploadIntent.putExtra("upload_id", newUpload.getId());
+            // Common upload parameters
+            // uploadIntent.putExtra("upload_id", newUpload.getId()); // If using DB for queueing, pass the ID.
             uploadIntent.putExtra("game_name", gameName);
-            uploadIntent.putExtra("access_key", accessKey);
-            uploadIntent.putExtra("secret_key", secretKey);
-            uploadIntent.putExtra("item_identifier", itemIdentifier);
             uploadIntent.putExtra("file_uri", selectedFileUri.toString());
             uploadIntent.putExtra("file_name", selectedFileName);
             uploadIntent.putExtra("file_size", selectedFileSize);
+            // Pass the selected upload destination service to UploadService
+            uploadIntent.putExtra("upload_destination_service", selectedUploadServiceValue);
+
+            // Pass all potentially relevant API keys to UploadService.
+            // UploadService will then use the appropriate keys based on 'selectedUploadServiceValue'.
+            // This approach centralizes the decision of which keys to use within UploadService.
+            uploadIntent.putExtra("access_key", prefs.getString("access_key", "")); // Internet Archive Access Key
+            uploadIntent.putExtra("secret_key", prefs.getString("secret_key", "")); // Internet Archive Secret Key
+            uploadIntent.putExtra("item_identifier", prefs.getString("item_identifier", "")); // Internet Archive Item Identifier
+            uploadIntent.putExtra("datanodes_api_key", prefs.getString("datanodes_api_key", "")); // Datanodes.to API Key
             
+            // Start the foreground service for uploading
             requireContext().startForegroundService(uploadIntent);
             
-            Toast.makeText(getContext(), "Upload iniciado", Toast.LENGTH_SHORT).show();
+            // Show a toast message indicating the upload has started and to which service.
+            Toast.makeText(getContext(), "Upload de " + gameName + " para " + spinnerUploadDestination.getSelectedItem().toString() + " iniciado.", Toast.LENGTH_SHORT).show();
             dialog.dismiss();
             cleanupDialogViewReferences();
         });
@@ -196,58 +255,69 @@ public class CommunityGamesFragment extends Fragment {
             selectedFileUri = data.getData();
             if (selectedFileUri != null) {
                 try {
-                    final int takeFlags = Intent.FLAG_GRANT_READ_URI_PERMISSION;
-                    // Attempt to take persistable URI permission
+                    final int takeFlags = Intent.FLAG_GRANT_READ_URI_PERMISSION | Intent.FLAG_GRANT_WRITE_URI_PERMISSION;
                     requireContext().getContentResolver().takePersistableUriPermission(selectedFileUri, takeFlags);
-                    // If successful, proceed to get file info
                     getFileInfo(selectedFileUri);
                 } catch (SecurityException e) {
                     android.util.Log.e("CommunityGamesFragment", "Failed to take persistable URI permission for: " + selectedFileUri, e);
-                    Toast.makeText(getContext(), "Erro: Não foi possível obter permissão de acesso permanente ao arquivo. Tente selecionar o arquivo novamente.", Toast.LENGTH_LONG).show();
-
-                    // Reset file selection state as permission was not granted
-                    this.selectedFileUri = null;
-                    this.selectedFileName = null;
-                    this.selectedFileSize = 0;
+                    Toast.makeText(getContext(), "Erro: Não foi possível obter permissão de acesso permanente ao arquivo.", Toast.LENGTH_LONG).show();
+                    selectedFileUri = null;
+                    selectedFileName = null;
+                    selectedFileSize = 0;
                     if (this.tvDialogSelectedFile != null) {
-                         this.tvDialogSelectedFile.setText("Falha ao obter permissão do arquivo.");
+                         this.tvDialogSelectedFile.setText("Falha ao obter permissão.");
                     }
-                    if (this.etDialogGameName != null && this.btnDialogUpload != null) { // Check for null if dialog might be dismissed
-                        updateUploadButtonState(); // Disable upload button
-                    }
+                    updateUploadButtonState();
                 }
             } else {
-                // Handle case where selectedFileUri is null (though data.getData() should provide it if resultCode is OK)
                 if (this.tvDialogSelectedFile != null) {
                   this.tvDialogSelectedFile.setText("Nenhum arquivo selecionado.");
                 }
-                // Ensure button state is updated if URI is null
-                if (this.etDialogGameName != null && this.btnDialogUpload != null) {
-                    updateUploadButtonState();
-                }
+                updateUploadButtonState();
             }
         }
     }
 
     private void getFileInfo(Uri uri) {
+        Cursor cursor = null;
         try {
-            Cursor cursor = requireContext().getContentResolver().query(uri, null, null, null, null);
+            cursor = requireContext().getContentResolver().query(uri, null, null, null, null);
             if (cursor != null && cursor.moveToFirst()) {
                 int nameIndex = cursor.getColumnIndex(OpenableColumns.DISPLAY_NAME);
                 int sizeIndex = cursor.getColumnIndex(OpenableColumns.SIZE);
                 
-                selectedFileName = cursor.getString(nameIndex);
-                selectedFileSize = cursor.getLong(sizeIndex);
+                if (nameIndex != -1) {
+                    selectedFileName = cursor.getString(nameIndex);
+                } else {
+                    // Fallback if display name is not available (less common for ACTION_OPEN_DOCUMENT)
+                    selectedFileName = uri.getLastPathSegment();
+                }
+
+                if (sizeIndex != -1 && !cursor.isNull(sizeIndex)) {
+                    selectedFileSize = cursor.getLong(sizeIndex);
+                } else {
+                    selectedFileSize = -1; // Indicate unknown size
+                }
                 
                 if (this.tvDialogSelectedFile != null) {
-                    this.tvDialogSelectedFile.setText("Arquivo: " + selectedFileName + " (" + formatFileSize(selectedFileSize) + ")");
+                    String fileSizeStr = (selectedFileSize != -1) ? formatFileSize(selectedFileSize) : "Tamanho desconhecido";
+                    this.tvDialogSelectedFile.setText("Arquivo: " + selectedFileName + " (" + fileSizeStr + ")");
                 }
                 updateUploadButtonState();
-                
-                cursor.close();
             }
         } catch (Exception e) {
+            android.util.Log.e("CommunityGamesFragment", "Error getting file info", e);
             Toast.makeText(getContext(), "Erro ao obter informações do arquivo", Toast.LENGTH_SHORT).show();
+            selectedFileName = null;
+            selectedFileSize = 0;
+            if (this.tvDialogSelectedFile != null) {
+                this.tvDialogSelectedFile.setText("Erro ao ler arquivo.");
+            }
+            updateUploadButtonState();
+        } finally {
+            if (cursor != null) {
+                cursor.close();
+            }
         }
     }
 
@@ -256,17 +326,14 @@ public class CommunityGamesFragment extends Fragment {
             return;
         }
         String gameName = this.etDialogGameName.getText().toString().trim();
-        if (!gameName.isEmpty() && this.selectedFileUri != null) {
-            this.btnDialogUpload.setEnabled(true);
-        } else {
-            this.btnDialogUpload.setEnabled(false);
-        }
+        this.btnDialogUpload.setEnabled(!gameName.isEmpty() && this.selectedFileUri != null);
     }
 
     private void cleanupDialogViewReferences() {
         this.etDialogGameName = null;
         this.tvDialogSelectedFile = null;
         this.btnDialogUpload = null;
+        this.spinnerUploadDestination = null; // Clear spinner reference
     }
 
     private String formatFileSize(long size) {
@@ -351,7 +418,7 @@ public class CommunityGamesFragment extends Fragment {
     @Override
     public void onDestroyView() {
         super.onDestroyView();
-        cleanupDialogViewReferences();
+        cleanupDialogViewReferences(); // Ensures dialog views are cleared
     }
 
     @Override
