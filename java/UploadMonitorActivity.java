@@ -5,6 +5,7 @@ import android.content.BroadcastReceiver;
 import android.content.Context;
 import android.content.Intent;
 import android.content.IntentFilter;
+import android.os.Build; // Needed for version check
 import android.os.Bundle;
 import android.util.Log;
 import android.view.MenuItem;
@@ -18,6 +19,7 @@ import com.winlator.Download.adapter.UploadMonitorAdapter;
 import com.winlator.Download.db.UploadRepository;
 import com.winlator.Download.model.UploadStatus;
 import com.winlator.Download.service.UploadService;
+import androidx.core.content.ContextCompat; // Added for ContextCompat
 
 import java.util.ArrayList;
 import java.util.List;
@@ -74,8 +76,12 @@ public class UploadMonitorActivity extends AppCompatActivity {
                 serviceIntent.putExtra("secret_key", upload.getSecretKey());
                 serviceIntent.putExtra("item_identifier", upload.getItemIdentifier());
                 serviceIntent.putExtra("file_uri", upload.getFileUri());
-
-                startService(serviceIntent);
+                serviceIntent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                    ContextCompat.startForegroundService(this, serviceIntent);
+                } else {
+                    startService(serviceIntent);
+                }
                 Toast.makeText(this, "Retomando upload de " + upload.getGameName() + ".", Toast.LENGTH_SHORT).show();
             }
         });
