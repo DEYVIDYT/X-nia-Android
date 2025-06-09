@@ -13,6 +13,7 @@ import java.io.InputStreamReader;
 import java.io.OutputStream;
 import java.net.HttpURLConnection;
 import java.net.URL;
+import java.nio.charset.StandardCharsets; // Added for UTF-8 encoding
 import java.util.UUID; // For generating boundary
 
 /**
@@ -90,7 +91,9 @@ public class DatanodesUploader {
             // If fileSize is known, use fixed-length streaming mode for efficiency.
             // Otherwise, default to chunked streaming mode (if server supports it without Content-Length).
             if (fileSize > 0) {
-                connection.setFixedLengthStreamingMode(calculateMultipartContentLength(fileSize, fileName, boundary));
+                long calculatedLength = calculateMultipartContentLength(fileSize, fileName, boundary);
+                Log.d(TAG, "Calculated Content-Length for Datanodes upload: " + calculatedLength);
+                connection.setFixedLengthStreamingMode(calculatedLength);
             } else {
                 // Datanodes.to API might require Content-Length. If fileSize is unknown, this could be an issue.
                 // For robustness, chunked streaming is set, but API behavior should be verified.
@@ -102,13 +105,13 @@ public class DatanodesUploader {
 
             // Construct the file part of the multipart request
             // Boundary marker
-            dos.writeBytes("--" + boundary + "\r\n");
+            dos.write(("--" + boundary + "\r\n").getBytes(StandardCharsets.UTF_8));
             // Content-Disposition header for the file field
-            dos.writeBytes("Content-Disposition: form-data; name=\"file\";filename=\"" + fileName + "\"\r\n");
+            dos.write(("Content-Disposition: form-data; name=\"file\";filename=\"" + fileName + "\"\r\n").getBytes(StandardCharsets.UTF_8));
             // Content-Type header for the file (generic binary stream)
-            dos.writeBytes("Content-Type: application/octet-stream\r\n");
+            dos.write(("Content-Type: application/octet-stream\r\n").getBytes(StandardCharsets.UTF_8));
             // Blank line separating headers from content
-            dos.writeBytes("\r\n");
+            dos.write(("\r\n").getBytes(StandardCharsets.UTF_8));
 
             // Read from the inputStream and write to the DataOutputStream
             byte[] buffer = new byte[8192]; // 8KB buffer for reading/writing
@@ -131,10 +134,10 @@ public class DatanodesUploader {
                 }
             }
             // Newline after file data
-            dos.writeBytes("\r\n");
+            dos.write(("\r\n").getBytes(StandardCharsets.UTF_8));
 
             // End of multipart data (final boundary marker)
-            dos.writeBytes("--" + boundary + "--\r\n");
+            dos.write(("--" + boundary + "--\r\n").getBytes(StandardCharsets.UTF_8));
             dos.flush(); // Ensure all data is written
             dos.close(); // Close the DataOutputStream, which also closes the underlying connection's OutputStream
 
@@ -221,19 +224,19 @@ public class DatanodesUploader {
     private long calculateMultipartContentLength(long fileSize, String fileName, String boundary) {
         long length = 0;
         // Length of the initial boundary and headers for the file part
-        length += ("--" + boundary + "\r\n").getBytes().length;
-        length += ("Content-Disposition: form-data; name=\"file\";filename=\"" + fileName + "\"\r\n").getBytes().length;
-        length += ("Content-Type: application/octet-stream\r\n").getBytes().length;
-        length += ("\r\n").getBytes().length; // Blank line before file content
+        length += ("--" + boundary + "\r\n").getBytes(StandardCharsets.UTF_8).length;
+        length += ("Content-Disposition: form-data; name=\"file\";filename=\"" + fileName + "\"\r\n").getBytes(StandardCharsets.UTF_8).length;
+        length += ("Content-Type: application/octet-stream\r\n").getBytes(StandardCharsets.UTF_8).length;
+        length += ("\r\n").getBytes(StandardCharsets.UTF_8).length; // Blank line before file content
 
         // Length of the file content itself
         length += fileSize;
 
         // Length of the newline after file content
-        length += ("\r\n").getBytes().length;
+        length += ("\r\n").getBytes(StandardCharsets.UTF_8).length;
 
         // Length of the final boundary marker
-        length += ("--" + boundary + "--\r\n").getBytes().length;
+        length += ("--" + boundary + "--\r\n").getBytes(StandardCharsets.UTF_8).length;
         return length;
     }
 }
