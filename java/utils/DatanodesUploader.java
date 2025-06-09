@@ -206,9 +206,8 @@ public class DatanodesUploader {
                 callback.onError("Erro no upload: " + responseCode + " - " + errorOutput);
             }
 
-        } catch (org.json.JSONException e) { // Catch JSONException separately if it occurs outside the try-catch for HTTP 200 response
-            Log.e(TAG, "JSONException during upload process (outside HTTP 200 block)", e);
-            callback.onError("Erro de formatação de dados (JSON): " + e.getMessage());
+        // Removed the outer org.json.JSONException catch block as it was unreachable.
+        // JSONExceptions are handled within the HTTP 200 OK block.
         } catch (IOException e) { // Catch IOExceptions
             Log.e(TAG, "IOException during upload process", e);
             callback.onError("Erro de comunicação (IO): " + e.getMessage());
