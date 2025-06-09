@@ -88,11 +88,11 @@ public class UploadRepository {
         Cursor cursor = db.query(
                 UploadContract.UploadEntry.TABLE_NAME,
                 projection,
-                null,
-                null,
-                null,
-                null,
-                null
+                null, // selection
+                null, // selectionArgs
+                null, // groupBy
+                null, // having
+                UploadContract.UploadEntry.COLUMN_NAME_START_TIME + " DESC"  // orderBy
         );
 
         while (cursor.moveToNext()) {
