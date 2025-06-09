@@ -138,7 +138,6 @@ public class UploadService extends Service {
             Log.d("UploadService", "Acquiring WakeLock for upload: " + uploadStatus.getGameName());
             wakeLock.acquire();
         }
-        // Removed extra closing brace and duplicate wakeLock.acquire() call from here
 
         String filePath = null;
         if ("com.android.providers.downloads.documents".equals(fileUri.getAuthority())) {
@@ -168,7 +167,7 @@ public class UploadService extends Service {
                 if (uploadStatus.getUploadedBytes() > 0) {
                     long skipped = ((java.io.FileInputStream) inputStreamForUpload).skip(uploadStatus.getUploadedBytes());
                     if (skipped != uploadStatus.getUploadedBytes()) {
-                        try { inputStreamForUpload.close(); } catch (java.io.IOException e) { Log.e("UploadService", "Error closing stream on partial skip", e); }
+                        try { inputStreamForUpload.close(); } catch (java.io.IOException e) { Log.e("UploadService", "Error closing stream on partial skip for file path", e); }
                         android.util.Log.w("UploadService", "Partial skip on FileInputStream. Restarting stream for: " + file.getName());
                         inputStreamForUpload = new java.io.FileInputStream(file); // Reopen
                         uploadStatus.setUploadedBytes(0);
@@ -181,11 +180,11 @@ public class UploadService extends Service {
                 if ("com.android.providers.downloads.documents".equals(fileUri.getAuthority())) {
                     android.util.Log.w("UploadService", "Download URI: No direct path, falling back to copy-to-temp-file for: " + fileUri.toString());
                     File tempFile = copyUriToTempFileInternal(fileUri, uploadStatus.getFileName());
-                    // copyUriToTempFileInternal throws IOException if it fails critically, so tempFile should not be null if no exception.
+                    // copyUriToTempFileInternal throws IOException if it fails critically.
                     tempFileForDeletionHolder[0] = tempFile;
 
                     updateNotification("Calculando hash (copia) de " + uploadStatus.getGameName() + "...", 0);
-                    md5Hash = calculateMd5FromFile(tempFile, tempFile.length(), uploadStatus.getGameName(), progress -> {
+                    md5Hash = calculateMd5FromFile(tempFile, tempFile.length(), uploadStatus.getGameName(), progress -> { // Use tempFile.length() for accurate progress of the copied file
                         updateNotification("Calculando hash (copia) de " + uploadStatus.getGameName() + "...", progress);
                     });
                     inputStreamForUpload = new java.io.FileInputStream(tempFile);
@@ -209,7 +208,7 @@ public class UploadService extends Service {
                     });
                     inputStreamForUpload = getContentResolver().openInputStream(fileUri);
                      if (inputStreamForUpload == null) {
-                        throw new IOException("Não foi possível abrir InputStream para URI (não-Downloads): " + fileUri);
+                        throw new IOException("Não foi possível abrir InputStream para URI (não-Downloads): " + fileUri.toString());
                     }
                     if (uploadStatus.getUploadedBytes() > 0) {
                         long skipped = inputStreamForUpload.skip(uploadStatus.getUploadedBytes());
@@ -217,7 +216,7 @@ public class UploadService extends Service {
                               try { inputStreamForUpload.close(); } catch (java.io.IOException e) { /* ignore */ }
                               inputStreamForUpload = getContentResolver().openInputStream(fileUri);
                                if (inputStreamForUpload == null) {
-                                  throw new IOException("Não foi possível reabrir InputStream para URI (não-Downloads) após falha no skip: " + fileUri);
+                                  throw new IOException("Não foi possível reabrir InputStream para URI (não-Downloads) após falha no skip: " + fileUri.toString());
                               }
                               uploadStatus.setUploadedBytes(0);
                               uploadStatus.setProgress(0);
@@ -229,23 +228,22 @@ public class UploadService extends Service {
             }
 
             if (md5Hash == null) {
-                // This case should ideally be caught by specific exceptions in md5 calculation methods
-                // For example, if calculateMd5FromUri or calculateMd5FromFile returns null or throws.
-                String error = "Erro ao calcular MD5 para " + uploadStatus.getGameName() + " (hash nulo resultante)";
-                Log.e("UploadService", error);
-                showErrorNotification(error);
+                String errorMsg = "Erro ao calcular MD5 para " + uploadStatus.getGameName() + " (hash nulo resultante)";
+                Log.e("UploadService", errorMsg);
+                showErrorNotification(errorMsg);
                 uploadStatus.setStatus(UploadStatus.Status.ERROR);
-                uploadStatus.setErrorMessage(error);
+                uploadStatus.setErrorMessage(errorMsg);
                 uploadRepository.updateUpload(uploadStatus);
-                sendUploadBroadcast(ACTION_UPLOAD_ERROR, uploadStatus.getId(), uploadStatus.getGameName(), uploadStatus.getFileName(), uploadStatus.getFileSize(), 0, error, uploadStatus.getUploadedBytes());
+                sendUploadBroadcast(ACTION_UPLOAD_ERROR, uploadStatus.getId(), uploadStatus.getGameName(), uploadStatus.getFileName(), uploadStatus.getFileSize(), 0, errorMsg, uploadStatus.getUploadedBytes());
                 if (inputStreamForUpload != null) try { inputStreamForUpload.close(); } catch (IOException e) { Log.e("UploadService", "Error closing stream early on MD5 null", e); }
+                if (tempFileForDeletionHolder[0] != null) { if (tempFileForDeletionHolder[0].delete()) { Log.d("UploadService", "Temp file deleted on MD5 null."); } }
                 stopSelf();
                 return;
             }
 
-            // Common upload logic
             final InternetArchiveUploader uploader = new InternetArchiveUploader(accessKey, secretKey, itemIdentifier);
-            final InputStream finalInputStreamForUpload = inputStreamForUpload;
+            final InputStream finalInputStreamForUpload = inputStreamForUpload; // Effectively final for lambda
+
             uploader.uploadFile(finalInputStreamForUpload, uploadStatus.getFileSize(), uploadStatus.getFileName(), md5Hash, uploadStatus.getUploadedBytes(), new InternetArchiveUploader.UploadCallback() {
                 @Override
                 public void onProgress(long uploadedBytes, int progress) {
@@ -261,9 +259,9 @@ public class UploadService extends Service {
                 public void onSuccess(String fileUrl) {
                     try { if (finalInputStreamForUpload != null) finalInputStreamForUpload.close(); } catch (java.io.IOException e) { android.util.Log.e("UploadService", "Error closing stream in onSuccess", e); }
                     if (tempFileForDeletionHolder[0] != null) {
-                        android.util.Log.d("UploadService", "Attempting to delete temp file: " + tempFileForDeletionHolder[0].getPath());
+                        android.util.Log.d("UploadService", "Attempting to delete temp file in onSuccess: " + tempFileForDeletionHolder[0].getPath());
                         if (!tempFileForDeletionHolder[0].delete()) {
-                            android.util.Log.w("UploadService", "Failed to delete temp file: " + tempFileForDeletionHolder[0].getPath());
+                            android.util.Log.w("UploadService", "Failed to delete temp file in onSuccess: " + tempFileForDeletionHolder[0].getPath());
                         }
                         tempFileForDeletionHolder[0] = null;
                     }
@@ -293,20 +291,21 @@ public class UploadService extends Service {
 
         } catch (Throwable t) {
             Log.e("UploadService", "Erro geral EXCEPTION/THROWABLE no upload de " + uploadStatus.getGameName() + ": " + t.getMessage(), t);
-            String error = "Erro crítico no upload de " + uploadStatus.getGameName() + ": " + t.getMessage();
-            showErrorNotification(error);
+            String errorMsgForUser = "Erro crítico no upload de " + uploadStatus.getGameName() + ": " + t.getMessage();
+            showErrorNotification(errorMsgForUser);
             uploadStatus.setStatus(UploadStatus.Status.ERROR);
-            uploadStatus.setErrorMessage(error);
+            uploadStatus.setErrorMessage(errorMsgForUser); // Use errorMsgForUser
             uploadRepository.updateUpload(uploadStatus);
-            sendUploadBroadcast(ACTION_UPLOAD_ERROR, uploadStatus.getId(), uploadStatus.getGameName(), uploadStatus.getFileName(), uploadStatus.getFileSize(), 0, error, uploadStatus.getUploadedBytes());
+            sendUploadBroadcast(ACTION_UPLOAD_ERROR, uploadStatus.getId(), uploadStatus.getGameName(), uploadStatus.getFileName(), uploadStatus.getFileSize(), 0, errorMsgForUser, uploadStatus.getUploadedBytes());
+
             if (inputStreamForUpload != null) {
                 try {
                     inputStreamForUpload.close();
                 } catch (java.io.IOException e) {
-                    android.util.Log.e("UploadService", "Error closing inputStreamForUpload in catch block", e);
+                    android.util.Log.e("UploadService", "Error closing inputStreamForUpload in main catch block", e);
                 }
             }
-             if (tempFileForDeletionHolder[0] != null) { // Also ensure deletion if main try block fails before callbacks
+            if (tempFileForDeletionHolder[0] != null) {
                 android.util.Log.d("UploadService", "Attempting to delete temp file in main catch: " + tempFileForDeletionHolder[0].getPath());
                 if (!tempFileForDeletionHolder[0].delete()) {
                     android.util.Log.w("UploadService", "Failed to delete temp file in main catch: " + tempFileForDeletionHolder[0].getPath());
