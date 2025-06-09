@@ -249,9 +249,16 @@ public class UploadService extends Service {
                 public void onProgress(long uploadedBytes, int progress) {
                     uploadStatus.setUploadedBytes(uploadedBytes);
                     uploadStatus.setProgress(progress);
-                    uploadStatus.setStatus(UploadStatus.Status.UPLOADING);
+                    uploadStatus.setStatus(UploadStatus.Status.UPLOADING); // Keep status as UPLOADING for UI consistency for now
                     uploadRepository.updateUpload(uploadStatus);
-                    updateNotification("Enviando " + uploadStatus.getGameName() + "...", progress);
+
+                    String notificationText;
+                    if (progress == 100) {
+                        notificationText = "Verificando upload de " + uploadStatus.getGameName() + "...";
+                    } else {
+                        notificationText = "Enviando " + uploadStatus.getGameName() + "...";
+                    }
+                    updateNotification(notificationText, progress); // Pass the actual progress
                     sendUploadBroadcast(ACTION_UPLOAD_PROGRESS, uploadStatus.getId(), uploadStatus.getGameName(), uploadStatus.getFileName(), uploadStatus.getFileSize(), progress, null, uploadedBytes);
                 }
 
@@ -506,7 +513,7 @@ public class UploadService extends Service {
 
     private void sendToPhpApi(UploadStatus uploadStatus, String gameUrl) { // File tempFile parameter removed
         try {
-            updateNotification("Finalizando upload de " + uploadStatus.getGameName() + "...", 95);
+            updateNotification("Registrando arquivo " + uploadStatus.getGameName() + "...", 100);
 
             JSONObject jsonData = new JSONObject();
             jsonData.put("name", uploadStatus.getGameName());
