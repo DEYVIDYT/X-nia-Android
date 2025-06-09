@@ -32,102 +32,20 @@
             android:textColor="?attr/colorOnSurfaceVariant"
             android:layout_marginBottom="16dp" />
 
-        <com.google.android.material.textfield.TextInputLayout
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginBottom="16dp">
-
-            <com.google.android.material.textfield.TextInputEditText
-                android:id="@+id/et_access_key"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:hint="Access Key" />
-
-        </com.google.android.material.textfield.TextInputLayout>
-
-        <com.google.android.material.textfield.TextInputLayout
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginBottom="16dp">
-
-            <com.google.android.material.textfield.TextInputEditText
-                android:id="@+id/et_secret_key"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:hint="Secret Key"
-                android:inputType="textPassword" />
-
-        </com.google.android.material.textfield.TextInputLayout>
-
-        <com.google.android.material.textfield.TextInputLayout
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginBottom="16dp">
-
-            <com.google.android.material.textfield.TextInputEditText
-                android:id="@+id/et_item_identifier"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:hint="Identificador do Item (ex: winlator-games)" />
-
-        </com.google.android.material.textfield.TextInputLayout>
-
         <Button
-            android:id="@+id/btn_save_settings"
+            android:id="@+id/btn_configure_upload_api"
+            style="@style/Widget.Material3.Button.TextButton"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:text="Salvar Configurações"
-            android:layout_marginBottom="24dp" />
+            android:text="Configurar Credenciais do Internet Archive"
+            android:layout_marginTop="8dp"
+            android:layout_marginBottom="24dp"
+            android:gravity="start|center_vertical"
+            android:paddingStart="16dp"
+            android:paddingEnd="16dp"
+            android:textAppearance="?attr/textAppearanceListItem"/>
 
-        <View
-            android:layout_width="match_parent"
-            android:layout_height="1dp"
-            android:background="?android:attr/listDivider"
-            android:layout_marginBottom="24dp" />
-
-        <TextView
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:text="Upload de Jogo"
-            android:textAppearance="?attr/textAppearanceTitleLarge"
-            android:layout_marginBottom="16dp" />
-
-        <com.google.android.material.textfield.TextInputLayout
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginBottom="16dp">
-
-            <com.google.android.material.textfield.TextInputEditText
-                android:id="@+id/et_game_name"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:hint="Nome do Jogo" />
-
-        </com.google.android.material.textfield.TextInputLayout>
-
-        <Button
-            android:id="@+id/btn_select_file"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:text="Selecionar Arquivo ZIP"
-            android:layout_marginBottom="16dp"
-            style="@style/Widget.Material3.Button.OutlinedButton" />
-
-        <TextView
-            android:id="@+id/tv_selected_file"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:text="Nenhum arquivo selecionado"
-            android:textAppearance="?attr/textAppearanceBodyMedium"
-            android:textColor="?attr/colorOnSurfaceVariant"
-            android:layout_marginBottom="16dp" />
-
-        <Button
-            android:id="@+id/btn_upload"
-            style="@style/Widget.App.Button"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:text="Fazer Upload" />
+        <!-- Removed upload game section -->
 
     </LinearLayout>
 

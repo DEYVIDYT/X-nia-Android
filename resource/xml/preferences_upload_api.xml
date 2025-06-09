@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="utf-8"?>
+<PreferenceScreen xmlns:app="http://schemas.android.com/apk/res-auto"
+    xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <PreferenceCategory
+        app:title="Internet Archive Credentials"
+        app:iconSpaceReserved="false">
+
+        <EditTextPreference
+            app:key="access_key"
+            app:title="Access Key"
+            app:summary="Enter your Internet Archive S3 Access Key"
+            app:useSimpleSummaryProvider="true"
+            app:iconSpaceReserved="false"/>
+
+        <EditTextPreference
+            app:key="secret_key"
+            app:title="Secret Key"
+            app:summary="Enter your Internet Archive S3 Secret Key"
+            app:useSimpleSummaryProvider="true"
+            android:inputType="textPassword"
+            app:iconSpaceReserved="false"/>
+
+        <EditTextPreference
+            app:key="item_identifier"
+            app:title="Item Identifier"
+            app:summary="Default Internet Archive item identifier (e.g., winlator-games)"
+            app:useSimpleSummaryProvider="true"
+            app:iconSpaceReserved="false"/>
+
+    </PreferenceCategory>
+
+</PreferenceScreen>

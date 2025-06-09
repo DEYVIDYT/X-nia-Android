@@ -62,6 +62,9 @@
 
         <activity android:name=".CommunityGamesActivity" />
 
+        <activity
+            android:name=".UploadApiSettingsHostActivity"
+            android:label="Upload API Settings" />
         
         
         <!-- Download Service -->
