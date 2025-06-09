@@ -8,6 +8,7 @@ import android.view.LayoutInflater;
 import android.view.View;
 import android.view.ViewGroup;
 import android.widget.Button;
+import android.widget.ImageView; // Import ImageView
 import android.widget.TextView;
 
 import androidx.annotation.NonNull;
@@ -41,11 +42,13 @@ public class CommunityGamesAdapter extends RecyclerView.Adapter<CommunityGamesAd
         CommunityGame game = gamesList.get(position);
         
         holder.tvGameName.setText(game.getName());
-        holder.tvGameSize.setText(game.getSize());
+        holder.tvGameSize.setText(game.getSize()); // Assuming getSize() returns "Tamanho: X MB"
+
+        // Set the placeholder icon
+        // The actual drawable R.drawable.ic_default_game_icon will be added in the next step.
+        holder.ivGameIcon.setImageResource(R.drawable.ic_default_game_icon);
         
         holder.btnDownload.setOnClickListener(v -> {
-            // Iniciar download usando o DownloadService existente
-            // Iniciar download usando o DownloadService existente
             Intent downloadIntent = new Intent(context, DownloadService.class);
             downloadIntent.putExtra("url", game.getUrl());
             downloadIntent.putExtra("filename", game.getName() + ".zip");
@@ -66,12 +69,14 @@ public class CommunityGamesAdapter extends RecyclerView.Adapter<CommunityGamesAd
         TextView tvGameName;
         TextView tvGameSize;
         Button btnDownload;
+        ImageView ivGameIcon; // Added ImageView
 
         public ViewHolder(@NonNull View itemView) {
             super(itemView);
             tvGameName = itemView.findViewById(R.id.tv_game_name);
             tvGameSize = itemView.findViewById(R.id.tv_game_size);
             btnDownload = itemView.findViewById(R.id.btn_download);
+            ivGameIcon = itemView.findViewById(R.id.iv_game_icon); // Initialized ImageView
         }
     }
 }
