@@ -40,7 +40,7 @@ public class InternetArchiveUploader {
         void onError(String error);
     }
 
-    // New method signature
+    // Restoring precalculatedMd5 parameter for optional MD5
     public void uploadFile(InputStream inputStream, long fileSize, String fileName, String precalculatedMd5, long streamStartOffset, UploadCallback callback) {
         try {
             String bucketName = itemIdentifier;
@@ -53,7 +53,13 @@ public class InternetArchiveUploader {
             // MD5 is now precalculated
             // String md5Hash = calculateMD5(file);
 
-            String stringToSign = "PUT\n" + precalculatedMd5 + "\napplication/octet-stream\n" + timestamp + "\n/" + bucketName + "/" + objectKey;
+            // Conditionally include MD5 in stringToSign
+            String md5ForSigning = (precalculatedMd5 != null && !precalculatedMd5.isEmpty()) ? precalculatedMd5 : "";
+            String stringToSign = "PUT\n" +
+                                  md5ForSigning + "\n" + // Use md5ForSigning (empty if precalculatedMd5 is null/empty)
+                                  "application/octet-stream\n" +
+                                  timestamp + "\n" +
+                                  "/" + bucketName + "/" + objectKey;
             String signature = generateSignature(stringToSign, secretKey);
             String uploadUrl = "https://s3.us.archive.org/" + bucketName + "/" + objectKey;
 
@@ -64,7 +70,10 @@ public class InternetArchiveUploader {
             connection.setRequestProperty("Authorization", "LOW " + accessKey + ":" + signature);
             connection.setRequestProperty("Date", timestamp);
             connection.setRequestProperty("Content-Type", "application/octet-stream");
-            connection.setRequestProperty("Content-MD5", precalculatedMd5); // Use precalculatedMd5
+            // Conditionally set Content-MD5 header
+            if (precalculatedMd5 != null && !precalculatedMd5.isEmpty()) {
+                connection.setRequestProperty("Content-MD5", precalculatedMd5);
+            }
 
             if (streamStartOffset > 0) {
                 connection.setRequestProperty("Content-Range", "bytes " + streamStartOffset + "-" + (fileSize - 1) + "/" + fileSize);
