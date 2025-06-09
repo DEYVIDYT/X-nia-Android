@@ -25,7 +25,8 @@ public class UploadApiSettingsFragment extends PreferenceFragmentCompat
 
     @Override
     public void onCreatePreferences(Bundle savedInstanceState, String rootKey) {
-        getPreferenceManager().setSharedPreferencesName("community_games");
+        // Removed: getPreferenceManager().setSharedPreferencesName("community_games");
+        // This change makes the fragment use the default SharedPreferences.
         setPreferencesFromResource(R.xml.preferences_upload_api, rootKey);
 
         uploadServicePreference = findPreference(KEY_UPLOAD_SERVICE);
