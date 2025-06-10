@@ -9,7 +9,7 @@
     <item name="android:windowLightStatusBar" tools:targetApi="m">true</item>
     <item name="android:enforceNavigationBarContrast" tools:targetApi="q">true</item>
     <item name="android:enforceStatusBarContrast" tools:targetApi="q">true</item>
-    <item name="preferenceTheme">@style/PreferenceThemeOverlay.Material3.MaterialAlertDialog</item>
+    <item name="preferenceTheme">@style/ThemeOverlay.Material3.MaterialAlertDialog.Preference</item>
     
     <!-- Fallback para dispositivos sem suporte a Dynamic Colors -->
     <item name="colorPrimary">@color/fallback_primary</item>
