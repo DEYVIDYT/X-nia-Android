@@ -1,5 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
     android:layout_width="match_parent"
     android:layout_height="wrap_content"
     android:orientation="vertical"
@@ -17,54 +18,98 @@
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:layout_marginBottom="16dp">
-
         <com.google.android.material.textfield.TextInputEditText
             android:id="@+id/et_dialog_game_name"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:hint="Nome do Jogo" />
-
     </com.google.android.material.textfield.TextInputLayout>
 
-    <Button
-        android:id="@+id/btn_dialog_select_file"
+    <RadioGroup
+        android:id="@+id/rg_upload_type"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:text="Selecionar Arquivo ZIP"
-        android:layout_marginBottom="16dp"
-        style="@style/Widget.Material3.Button.OutlinedButton" />
+        android:orientation="horizontal"
+        android:layout_marginBottom="16dp">
+        <RadioButton
+            android:id="@+id/rb_upload_file"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="Upload Arquivo"
+            android:checked="true"
+            android:layout_marginEnd="16dp"/>
+        <RadioButton
+            android:id="@+id/rb_direct_link"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="Link Direto"/>
+    </RadioGroup>
 
-    <TextView
-        android:id="@+id/tv_dialog_selected_file"
+    <!-- File Upload Section (Visibility controlled by RadioGroup) -->
+    <LinearLayout
+        android:id="@+id/section_file_upload"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:text="Nenhum arquivo selecionado"
-        android:textSize="14sp"
-        android:textColor="?attr/colorOnSurfaceVariant"
-        android:layout_marginBottom="16dp"
-        android:gravity="center" />
+        android:orientation="vertical"
+        android:visibility="visible">
 
-    <TextView
+        <Button
+            android:id="@+id/btn_dialog_select_file"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="Selecionar Arquivo ZIP"
+            android:layout_marginBottom="8dp"
+            style="@style/Widget.Material3.Button.OutlinedButton" />
+
+        <TextView
+            android:id="@+id/tv_dialog_selected_file"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="Nenhum arquivo selecionado"
+            android:textSize="14sp"
+            android:textColor="?attr/colorOnSurfaceVariant"
+            android:layout_marginBottom="16dp"
+            android:gravity="center" />
+    </LinearLayout>
+
+    <!-- Direct Link Section (Visibility controlled by RadioGroup) -->
+    <LinearLayout
+        android:id="@+id/section_direct_link"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:text="Enviar para:"
-        android:textSize="14sp"
-        android:layout_marginBottom="8dp"/>
+        android:orientation="vertical"
+        android:visibility="gone">
 
-    <Spinner
-        android:id="@+id/spinner_upload_destination"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:layout_marginBottom="24dp"
-        android:paddingTop="8dp"
-        android:paddingBottom="8dp"/>
+        <com.google.android.material.textfield.TextInputLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginBottom="8dp">
+            <com.google.android.material.textfield.TextInputEditText
+                android:id="@+id/et_dialog_game_url"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:hint="URL Direto do Jogo (ZIP)"
+                android:inputType="textUri"/>
+        </com.google.android.material.textfield.TextInputLayout>
 
+        <com.google.android.material.textfield.TextInputLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginBottom="16dp">
+            <com.google.android.material.textfield.TextInputEditText
+                android:id="@+id/et_dialog_game_size_manual"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:hint="Tamanho (ex: 500MB, 1.2GB)"/>
+        </com.google.android.material.textfield.TextInputLayout>
+    </LinearLayout>
+
+    <!-- Common Buttons -->
     <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:orientation="horizontal"
         android:gravity="end">
-
         <Button
             android:id="@+id/btn_dialog_cancel"
             android:layout_width="wrap_content"
@@ -72,14 +117,11 @@
             android:text="Cancelar"
             android:layout_marginEnd="8dp"
             style="@style/Widget.Material3.Button.TextButton" />
-
         <Button
             android:id="@+id/btn_dialog_upload"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:text="Upload"
             android:enabled="false" />
-
     </LinearLayout>
-
 </LinearLayout>
