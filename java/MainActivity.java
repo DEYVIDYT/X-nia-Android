@@ -59,6 +59,7 @@ public class MainActivity extends AppCompatActivity {
     private Map<String, List<Release>> apiData = new LinkedHashMap<>();
     private ProgressBar progressBar;
     private TextView errorTextView;
+    private com.google.android.material.tabs.TabLayoutMediator tabLayoutMediator; // Added class field
 
     private static final String API_URL = "https://raw.githubusercontent.com/DEYVIDYT/WINLATOR-DOWNLOAD/refs/heads/main/WINLATOR.json";
     private static final int STORAGE_PERMISSION_CODE = 101;
@@ -84,10 +85,15 @@ public class MainActivity extends AppCompatActivity {
         pagerAdapter = new MyPagerAdapter(this);
         viewPager.setAdapter(pagerAdapter);
 
-        // Setup TabLayoutMediator here, potentially with initial/empty titles
-        new TabLayoutMediator(tabLayout, viewPager,
-            (tab, position) -> tab.setText(pagerAdapter.getPageTitle(position))
-        ).attach();
+        // Setup TabLayoutMediator here and assign to class field
+        this.tabLayoutMediator = new TabLayoutMediator(tabLayout, viewPager,
+            (tab, position) -> {
+                if (pagerAdapter != null) { // Ensure adapter is available
+                    tab.setText(pagerAdapter.getPageTitle(position));
+                }
+            }
+        );
+        this.tabLayoutMediator.attach();
 
         // Adicionando logs para depuração
         if (progressBar == null) {
@@ -435,8 +441,21 @@ public class MainActivity extends AppCompatActivity {
                     pagerAdapter.updateData(new LinkedHashMap<>()); // Pass empty map to clear
                 }
             }
-            // The TabLayoutMediator set up in onCreate should handle title updates via getPageTitle
-            // and tab recreation if count changes due to notifyDataSetChanged()
+
+            // Detach and re-attach TabLayoutMediator to ensure tabs are rebuilt
+            if (tabLayout != null && viewPager != null && pagerAdapter != null) {
+                if (this.tabLayoutMediator != null) {
+                    this.tabLayoutMediator.detach();
+                }
+                this.tabLayoutMediator = new TabLayoutMediator(tabLayout, viewPager,
+                    (tab, position) -> {
+                        if (pagerAdapter != null) {
+                            tab.setText(pagerAdapter.getPageTitle(position));
+                        }
+                    }
+                );
+                this.tabLayoutMediator.attach();
+            }
             
             // Ensure UI elements are visible after data load attempt
             if (tabLayout != null) {
