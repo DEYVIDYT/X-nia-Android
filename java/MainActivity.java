@@ -1,5 +1,10 @@
 package com.winlator.Download;
 
+import android.Manifest; // Added
+import android.content.pm.PackageManager; // Added
+import androidx.core.app.ActivityCompat; // Added
+import androidx.core.content.ContextCompat; // Added
+import androidx.appcompat.app.AlertDialog; // Added
 import androidx.appcompat.app.AppCompatActivity;
 import androidx.fragment.app.Fragment;
 import androidx.fragment.app.FragmentManager;
@@ -7,9 +12,12 @@ import androidx.fragment.app.FragmentTransaction;
 import androidx.viewpager2.adapter.FragmentStateAdapter;
 import androidx.viewpager2.widget.ViewPager2;
 
+import android.content.DialogInterface; // Added
 import android.content.Intent;
+import android.net.Uri; // Added
 import android.os.AsyncTask;
 import android.os.Bundle;
+import android.provider.Settings; // Added
 import android.util.Log;
 import android.view.Menu;
 import android.view.MenuItem;
@@ -50,6 +58,7 @@ public class MainActivity extends AppCompatActivity {
     private TextView errorTextView;
 
     private static final String API_URL = "https://raw.githubusercontent.com/DEYVIDYT/WINLATOR-DOWNLOAD/refs/heads/main/WINLATOR.json";
+    private static final int STORAGE_PERMISSION_CODE = 101; // Added
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -79,6 +88,115 @@ public class MainActivity extends AppCompatActivity {
         }
 
         new FetchApiDataTask().execute(API_URL);
+
+        if (!checkStoragePermissions()) {
+            requestStoragePermissions();
+        } else {
+            // Permissions are already granted, proceed with app logic that needs storage
+            // e.g., initializeFileDependentFeatures();
+            // For now, just log or do nothing specific if already granted at this stage.
+            Log.d("MainActivity", "Storage permissions already granted.");
+        }
+    }
+
+    private boolean checkStoragePermissions() {
+        // Check for READ_EXTERNAL_STORAGE is always relevant.
+        boolean readGranted = ContextCompat.checkSelfPermission(this, Manifest.permission.READ_EXTERNAL_STORAGE) == PackageManager.PERMISSION_GRANTED;
+
+        // For WRITE_EXTERNAL_STORAGE, if we're on API 28 or lower, it must be granted.
+        // If on API 29+, this permission (as defined with maxSdkVersion=28) is not available for general use,
+        // so we don't strictly need to check its grant status for the app to proceed,
+        // as long as READ is granted and the app uses modern storage practices.
+        if (android.os.Build.VERSION.SDK_INT <= android.os.Build.VERSION_CODES.P) { // Android 9 (Pie) or older
+            boolean writeGranted = ContextCompat.checkSelfPermission(this, Manifest.permission.WRITE_EXTERNAL_STORAGE) == PackageManager.PERMISSION_GRANTED;
+            return readGranted && writeGranted;
+        } else { // Android 10 (Q) or newer
+            return readGranted; // Primarily rely on READ for shared storage access.
+        }
+    }
+
+    private void requestStoragePermissions() {
+         ActivityCompat.requestPermissions(this,
+                new String[]{Manifest.permission.READ_EXTERNAL_STORAGE, Manifest.permission.WRITE_EXTERNAL_STORAGE},
+                STORAGE_PERMISSION_CODE);
+    }
+
+    // onRequestPermissionsResult will be handled in the next subtask
+    @Override
+    public void onRequestPermissionsResult(int requestCode, @NonNull String[] permissions, @NonNull int[] grantResults) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults);
+
+        if (requestCode == STORAGE_PERMISSION_CODE) {
+            if (checkStoragePermissions()) { // Re-check using the same logic as onCreate
+                Toast.makeText(this, "Permissões de armazenamento concedidas!", Toast.LENGTH_SHORT).show();
+                // Proceed with app logic
+                // e.g., initializeFileDependentFeatures();
+            } else {
+                // Permissions were denied or not fully granted as per checkStoragePermissions logic
+                boolean canRequestAgain = false;
+                for (String permission : permissions) {
+                    // Check if we can request any of the *requested* permissions again.
+                    if (ActivityCompat.shouldShowRequestPermissionRationale(this, permission)) {
+                        canRequestAgain = true;
+                        break;
+                    }
+                }
+
+                if (canRequestAgain) {
+                    // User denied, but not "Don't ask again". Show dialog to explain and retry.
+                    showPermissionDeniedDialog(false);
+                } else {
+                    // User denied with "Don't ask again" or permission is otherwise blocked.
+                    // Show dialog to explain and guide to settings.
+                    showPermissionDeniedDialog(true);
+                }
+            }
+        }
+    }
+
+    private void showPermissionDeniedDialog(boolean goToSettings) {
+        AlertDialog.Builder builder = new AlertDialog.Builder(this);
+        builder.setTitle("Permissão Necessária");
+        builder.setMessage("Esta aplicação precisa da permissão de armazenamento para funcionar corretamente. Por favor, conceda a permissão.");
+        builder.setCancelable(false); // User must interact with the dialog
+
+        if (goToSettings) {
+            builder.setPositiveButton("Abrir Configurações", new DialogInterface.OnClickListener() {
+                @Override
+                public void onClick(DialogInterface dialog, int which) {
+                    dialog.dismiss();
+                    // Intent to open app settings
+                    Intent intent = new Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS);
+                    Uri uri = Uri.fromParts("package", getPackageName(), null);
+                    intent.setData(uri);
+                    startActivity(intent);
+                    // Consider finishing MainActivity or re-checking permission in onResume after returning from settings
+                }
+            });
+            builder.setNegativeButton("Sair", new DialogInterface.OnClickListener() {
+                @Override
+                public void onClick(DialogInterface dialog, int which) {
+                    dialog.dismiss();
+                    finish(); // Exit the app
+                }
+            });
+        } else {
+            builder.setPositiveButton("Conceder Permissão", new DialogInterface.OnClickListener() {
+                @Override
+                public void onClick(DialogInterface dialog, int which) {
+                    dialog.dismiss();
+                    requestStoragePermissions(); // Request again
+                }
+            });
+            builder.setNegativeButton("Sair", new DialogInterface.OnClickListener() {
+                @Override
+                public void onClick(DialogInterface dialog, int which) {
+                    dialog.dismiss();
+                    finish(); // Exit the app
+                }
+            });
+        }
+        builder.show();
     }
 
     @Override
