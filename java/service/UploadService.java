@@ -19,27 +19,28 @@ import com.winlator.Download.MainActivity;
 import com.winlator.Download.R;
 import com.winlator.Download.db.UploadRepository;
 import com.winlator.Download.model.UploadStatus;
-import com.winlator.Download.utils.InternetArchiveUploader;
+// import com.winlator.Download.utils.InternetArchiveUploader; // Removed
 
 import org.json.JSONObject;
 
 import java.io.BufferedReader;
-import java.io.BufferedReader;
-import java.io.File;
-import java.io.FileInputStream; // Added
-import java.io.FileOutputStream;
+// import java.io.File; // Removed
+// import java.io.FileInputStream; // Removed
+// import java.io.FileOutputStream; // Removed
 import java.io.IOException;
-import java.io.InputStream;
+// import java.io.InputStream; // Removed
 import java.io.InputStreamReader;
 import java.io.OutputStream;
 import java.net.HttpURLConnection;
 import java.net.URL;
-import java.security.MessageDigest;
+// import java.security.MessageDigest; // Removed
+import java.util.Arrays;
+import java.util.List;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
-import android.util.Base64; // Added for MD5
-import android.database.Cursor; // Added
-import android.provider.MediaStore; // Added
+// import android.util.Base64; // Removed for MD5
+// import android.database.Cursor; // Removed
+// import android.provider.MediaStore; // Removed
 
 public class UploadService extends Service {
 
@@ -55,7 +56,14 @@ public class UploadService extends Service {
     private PowerManager.WakeLock wakeLock;
     private UploadRepository uploadRepository;
 
-    // Md5ProgressListener interface removed
+    private static final List<String> ALLOWED_DOMAINS = Arrays.asList(
+            "www.mediafire.com",
+            "buzzheavier.com",
+            "gofile.io",
+            "datanodes.to",
+            "drive.google.com",
+            "pixeldrain.com"
+    );
 
     @Override
     public void onCreate() {
@@ -68,7 +76,11 @@ public class UploadService extends Service {
         PowerManager powerManager = (PowerManager) getSystemService(Context.POWER_SERVICE);
         if (powerManager != null) {
             wakeLock = powerManager.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "UploadService::UploadWakelockTag");
-            wakeLock.setReferenceCounted(false);
+            wakeLock.setReferenceCounted(false); // Hold wake lock for the service lifetime
+            if (!wakeLock.isHeld()) {
+                wakeLock.acquire();
+                Log.d("UploadService", "Service WakeLock acquired.");
+            }
         } else {
             Log.e("UploadService", "PowerManager not available, WakeLock not initialized.");
         }
@@ -78,243 +90,108 @@ public class UploadService extends Service {
     public int onStartCommand(Intent intent, int flags, int startId) {
         if (intent != null) {
             String gameName = intent.getStringExtra("game_name");
-            String accessKey = intent.getStringExtra("access_key");
-            String secretKey = intent.getStringExtra("secret_key");
-            String itemIdentifier = intent.getStringExtra("item_identifier");
-            String fileUriString = intent.getStringExtra("file_uri");
-            String fileName = intent.getStringExtra("file_name");
-            long fileSize = intent.getLongExtra("file_size", 0);
-            int uploadId = intent.getIntExtra("upload_id", -1); // -1 if new upload
+            String gameLink = intent.getStringExtra("game_link");
+            long gameSizeBytes = intent.getLongExtra("game_size_bytes", 0);
+            String fileUriString = null; // Assuming file URI is not passed for link-based uploads
+            String fileName = gameName; // Using gameName as fileName for now
+            int uploadId = intent.getIntExtra("upload_id", -1);
 
             String currentProcessGameName = gameName;
             if (currentProcessGameName == null || currentProcessGameName.isEmpty()) {
-                currentProcessGameName = "Upload";
+                currentProcessGameName = "Novo Jogo";
             }
 
-            Notification preparingOrInitialNotification = createNotification("Preparando " + currentProcessGameName + "...", 0);
-            startForeground(NOTIFICATION_ID, preparingOrInitialNotification);
+            // Use a more generic "fileName" for UploadStatus if gameLink doesn't imply one.
+            // For this iteration, we'll use gameName as a placeholder for fileName if a distinct one isn't derived.
+            // The UploadStatus constructor will need to be adapted if its 'fileName' field is critical and different from gameName.
+            // Assuming UploadStatus will be updated to take gameLink and gameSizeBytes
+            // and that its internal 'fileName' might be derived or set to gameName.
+
+            Notification preparingNotification = createNotification("Preparando " + currentProcessGameName + "...", 0);
+            startForeground(NOTIFICATION_ID, preparingNotification);
 
             executor.execute(() -> {
                 UploadStatus uploadStatus;
                 if (uploadId != -1) {
-                    // Existing upload, try to resume
                     uploadStatus = uploadRepository.getUploadById(uploadId);
                     if (uploadStatus == null) {
-                        // Should not happen if ID is valid, but handle defensively
-                        Log.e("UploadService", "UploadStatus with ID " + uploadId + " not found. Starting new upload.");
-                        uploadStatus = new UploadStatus(gameName, fileName, fileSize, accessKey, secretKey, itemIdentifier, fileUriString);
+                        Log.e("UploadService", "UploadStatus com ID " + uploadId + " não encontrado. Iniciando novo upload.");
+                        // Using the updated UploadStatus constructor
+                        uploadStatus = new UploadStatus(gameName, fileName, gameSizeBytes, fileUriString, gameLink);
                         long newId = uploadRepository.insertUpload(uploadStatus);
                         uploadStatus.setId((int) newId);
                     } else {
-                        // Update status to UPLOADING if it was PAUSED or ERROR
                         if (uploadStatus.getStatus() == UploadStatus.Status.PAUSED || uploadStatus.getStatus() == UploadStatus.Status.ERROR) {
-                            uploadStatus.setStatus(UploadStatus.Status.UPLOADING);
+                            uploadStatus.setStatus(UploadStatus.Status.UPLOADING); // Reset status
+                            uploadStatus.setFileSize(gameSizeBytes);
+                            uploadStatus.setGameLink(gameLink); // Update game link if retrying
+                            uploadStatus.setFileUri(fileUriString); // Update file URI if applicable
                             uploadRepository.updateUpload(uploadStatus);
                         }
                     }
                 } else {
-                    // New upload
-                    uploadStatus = new UploadStatus(gameName, fileName, fileSize, accessKey, secretKey, itemIdentifier, fileUriString);
+                    // New upload:
+                    uploadStatus = new UploadStatus(gameName, fileName, gameSizeBytes, fileUriString, gameLink);
                     long newId = uploadRepository.insertUpload(uploadStatus);
                     uploadStatus.setId((int) newId);
                 }
 
-                // Send initial broadcast for the UI to pick up
-                sendUploadBroadcast(ACTION_UPLOAD_STARTED, uploadStatus.getId(), gameName, fileName, fileSize, uploadStatus.getProgress(), null, uploadStatus.getUploadedBytes());
-
-                uploadGame(uploadStatus, accessKey, secretKey, itemIdentifier, Uri.parse(fileUriString));
+                sendUploadBroadcast(ACTION_UPLOAD_STARTED, uploadStatus.getId(), gameName, fileName, gameSizeBytes, 0, null, 0);
+                uploadGame(uploadStatus);
             });
         }
-
         return START_NOT_STICKY;
     }
 
-    private void uploadGame(UploadStatus uploadStatus, String accessKey, String secretKey,
-                           String itemIdentifier, Uri fileUri) {
-        if (wakeLock != null && !wakeLock.isHeld()) {
-            Log.d("UploadService", "Acquiring WakeLock for upload: " + uploadStatus.getGameName());
-            wakeLock.acquire();
+    private boolean isValidGameLink(String gameLink) {
+        if (gameLink == null || gameLink.trim().isEmpty()) {
+            return false;
         }
-
-        String filePath = null;
-        if ("com.android.providers.downloads.documents".equals(fileUri.getAuthority())) {
-            filePath = getFilePathFromDownloadUri(this, fileUri);
-            if (filePath != null) {
-                 android.util.Log.i("UploadService", "Obtained direct file path for Download URI: " + filePath);
-            } else {
-                 android.util.Log.w("UploadService", "Failed to obtain direct file path for Download URI: " + fileUri.toString() + ". Will attempt copy-to-temp fallback.");
-            }
-        }
-
-        // filePath, md5Hash, and tempFileForDeletionHolder related logic removed.
-        InputStream inputStreamForUpload = null;
-
         try {
-            // Initial notification for the sending phase
-            updateNotification("Enviando " + uploadStatus.getGameName() + "...", uploadStatus.getProgress());
-
-            Log.d("UploadService", "Using URI stream for upload: " + fileUri.toString());
-            inputStreamForUpload = getContentResolver().openInputStream(fileUri);
-            if (inputStreamForUpload == null) {
-                throw new IOException("Não foi possível abrir InputStream para URI: " + fileUri.toString());
-            }
-
-            if (uploadStatus.getUploadedBytes() > 0) {
-                long actualSkipped = inputStreamForUpload.skip(uploadStatus.getUploadedBytes());
-                if (actualSkipped != uploadStatus.getUploadedBytes()) {
-                    Log.w("UploadService", "Falha ao pular bytes para resumo. Esperado: " + uploadStatus.getUploadedBytes() + ", pulado: " + actualSkipped + ". Reiniciando upload do URI.");
-                    try { inputStreamForUpload.close(); } catch (IOException e) { Log.e("UploadService", "Error closing stream on partial skip URI", e); }
-                    inputStreamForUpload = getContentResolver().openInputStream(fileUri); // Re-open
-                    if (inputStreamForUpload == null) {
-                         throw new IOException("Não foi possível reabrir InputStream para URI após falha no skip: " + fileUri.toString());
-                    }
-                    uploadStatus.setUploadedBytes(0);
-                    uploadStatus.setProgress(0);
-                    uploadRepository.updateUpload(uploadStatus); // Persist reset
-                }
-            }
-
-            final InternetArchiveUploader uploader = new InternetArchiveUploader(accessKey, secretKey, itemIdentifier);
-            final InputStream finalInputStreamForUpload = inputStreamForUpload; // To be used in callbacks
-
-            uploader.uploadFile(
-                finalInputStreamForUpload,
-                uploadStatus.getFileSize(),
-                uploadStatus.getFileName(),
-                null, // md5Hash is explicitly null
-                uploadStatus.getUploadedBytes(), // streamStartOffset
-                new InternetArchiveUploader.UploadCallback() {
-                    @Override
-                    public void onProgress(long uploadedBytes, int progress) {
-                        uploadStatus.setUploadedBytes(uploadedBytes);
-                        uploadStatus.setProgress(progress);
-                        uploadStatus.setStatus(UploadStatus.Status.UPLOADING);
-                        uploadRepository.updateUpload(uploadStatus);
-                        String notificationText = "Enviando " + uploadStatus.getGameName() + "...";
-                        if (progress == 100) {
-                            notificationText = "Verificando upload de " + uploadStatus.getGameName() + "...";
-                        }
-                        updateNotification(notificationText, progress);
-                        sendUploadBroadcast(ACTION_UPLOAD_PROGRESS, uploadStatus.getId(), uploadStatus.getGameName(), uploadStatus.getFileName(), uploadStatus.getFileSize(), progress, null, uploadedBytes);
-                    }
-
-                    @Override
-                    public void onSuccess(String fileUrl) {
-                        try { if (finalInputStreamForUpload != null) finalInputStreamForUpload.close(); } catch (java.io.IOException e) { android.util.Log.e("UploadService", "Error closing stream in onSuccess", e); }
-                        // No temp file to delete here in this simplified path
-                        sendToPhpApi(uploadStatus, fileUrl);
-                    }
-
-                    @Override
-                    public void onError(String error) {
-                        try { if (finalInputStreamForUpload != null) finalInputStreamForUpload.close(); } catch (java.io.IOException e) { android.util.Log.e("UploadService", "Error closing stream in onError", e); }
-                        // No temp file to delete here in this simplified path
-                        Log.e("UploadService", "Erro no upload (uploader.uploadFile callback) de " + uploadStatus.getGameName() + ": " + error);
-                        String errorMsg = "Erro no upload de " + uploadStatus.getGameName() + ": " + error;
-                    showErrorNotification(errorMsg);
-                    uploadStatus.setStatus(UploadStatus.Status.ERROR);
-                    uploadStatus.setErrorMessage(errorMsg);
-                    uploadRepository.updateUpload(uploadStatus);
-                    sendUploadBroadcast(ACTION_UPLOAD_ERROR, uploadStatus.getId(), uploadStatus.getGameName(), uploadStatus.getFileName(), uploadStatus.getFileSize(), 0, errorMsg, uploadStatus.getUploadedBytes());
-                    stopSelf();
-                }
-            });
-
-        } catch (Throwable t) {
-            Log.e("UploadService", "Erro geral EXCEPTION/THROWABLE no upload de " + uploadStatus.getGameName() + ": " + t.getMessage(), t);
-            String errorMsgForUser = "Erro crítico no upload de " + uploadStatus.getGameName() + ": " + t.getMessage();
-            showErrorNotification(errorMsgForUser);
-            uploadStatus.setStatus(UploadStatus.Status.ERROR);
-                    uploadStatus.setErrorMessage(errorMsgForUser);
-            uploadRepository.updateUpload(uploadStatus);
-            sendUploadBroadcast(ACTION_UPLOAD_ERROR, uploadStatus.getId(), uploadStatus.getGameName(), uploadStatus.getFileName(), uploadStatus.getFileSize(), 0, errorMsgForUser, uploadStatus.getUploadedBytes());
-
-            if (inputStreamForUpload != null) {
-                try {
-                    inputStreamForUpload.close();
-                } catch (java.io.IOException e) {
-                    android.util.Log.e("UploadService", "Error closing inputStreamForUpload in main catch block", e);
-                }
-            }
-            // No temp file deletion holder to check here in this simplified path
-            stopSelf();
-        } finally {
-            if (wakeLock != null && wakeLock.isHeld()) {
-                Log.d("UploadService", "Releasing WakeLock for upload: " + uploadStatus.getGameName());
-                wakeLock.release();
-            }
+            URL url = new URL(gameLink);
+            String host = url.getHost();
+            return ALLOWED_DOMAINS.contains(host);
+        } catch (Exception e) {
+            Log.e("UploadService", "Error validating URL: " + gameLink, e);
+            return false;
         }
     }
 
-    private String getFilePathFromDownloadUri(Context context, Uri uri) {
-        if (uri == null || !"com.android.providers.downloads.documents".equals(uri.getAuthority())) {
-            return null;
+    private void uploadGame(UploadStatus uploadStatus) {
+        updateNotification("Validando link para " + uploadStatus.getGameName() + "...", 10);
+        sendUploadBroadcast(ACTION_UPLOAD_PROGRESS, uploadStatus.getId(), uploadStatus.getGameName(), uploadStatus.getFileName(), uploadStatus.getFileSize(), 10, null, 0);
+
+        if (!isValidGameLink(uploadStatus.getGameLink())) {
+            String errorMsg = "Link do jogo inválido ou não permitido: " + uploadStatus.getGameLink();
+            Log.e("UploadService", errorMsg);
+            // No need to call showErrorNotification here as handleError will do it.
+            handleError(uploadStatus, errorMsg);
+            stopSelfIfNeeded(); // Ensure service stops if validation fails early.
+            return;
         }
 
-        Cursor cursor = null;
-        final String column = "_data"; // MediaStore.Downloads.COLUMN_DATA
-        final String[] projection = { column };
-        String path = null;
+        // gameLink is already part of uploadStatus and persisted by insertUpload or updateUpload.
+        // No need to set it again here unless it was modified, which it isn't in this flow.
 
-        String id = null;
-        if (uri.getPath() != null) {
-            String[] pathSegments = uri.getPath().split(":");
-            if (pathSegments.length > 1) {
-                id = pathSegments[pathSegments.length - 1];
-            } else {
-                pathSegments = uri.getPath().split("/");
-                if (pathSegments.length > 0) {
-                    id = pathSegments[pathSegments.length - 1];
-                }
-            }
-        }
+        updateNotification("Registrando " + uploadStatus.getGameName() + " com o servidor...", 50);
+        sendUploadBroadcast(ACTION_UPLOAD_PROGRESS, uploadStatus.getId(), uploadStatus.getGameName(), uploadStatus.getFileName(), uploadStatus.getFileSize(), 50, null, 0);
 
-        if (id == null || !android.text.TextUtils.isDigitsOnly(id)) {
-             // android.util.Log.w("UploadService", "Download URI ID is not simple numeric, direct path query might fail: " + id);
-        }
-
-        if (id != null) {
-            try {
-                Uri contentUri = android.provider.MediaStore.Downloads.EXTERNAL_CONTENT_URI;
-                 if (android.text.TextUtils.isDigitsOnly(id)) {
-                    cursor = context.getContentResolver().query(contentUri, projection, "_id=?", new String[]{id}, null);
-                 } else {
-                    android.util.Log.w("UploadService", "Non-numeric ID for Download URI, _id query unlikely to work: " + id);
-                 }
-
-                if (cursor != null && cursor.moveToFirst()) {
-                    int columnIndex = cursor.getColumnIndexOrThrow(column);
-                    path = cursor.getString(columnIndex);
-                }
-            } catch (Exception e) {
-                android.util.Log.e("UploadService", "Error querying MediaStore for Download URI path", e);
-                path = null;
-            } finally {
-                if (cursor != null) {
-                    cursor.close();
-                }
-            }
-        }
-
-        if (path == null && "file".equalsIgnoreCase(uri.getScheme())) {
-            path = uri.getPath();
-        }
-
-        return path;
+        sendToPhpApi(uploadStatus);
     }
 
+    // getFilePathFromDownloadUri method removed
     // copyUriToTempFileInternal method removed
     // calculateMd5FromFile method removed
     // calculateMd5FromUri method removed
 
-    private void sendToPhpApi(UploadStatus uploadStatus, String gameUrl) { // File tempFile parameter removed
+    private void sendToPhpApi(UploadStatus uploadStatus) {
         try {
-            updateNotification("Registrando arquivo " + uploadStatus.getGameName() + "...", 100);
+            updateNotification("Registrando " + uploadStatus.getGameName() + "...", 75);
 
             JSONObject jsonData = new JSONObject();
             jsonData.put("name", uploadStatus.getGameName());
             jsonData.put("size", formatFileSize(uploadStatus.getFileSize()));
-            jsonData.put("url", gameUrl);
+            jsonData.put("url", uploadStatus.getGameLink()); // Get gameLink from UploadStatus
 
             URL url = new URL("https://ldgames.x10.mx/add_update_game.php");
             HttpURLConnection connection = (HttpURLConnection) url.openConnection();
@@ -327,7 +204,7 @@ public class UploadService extends Service {
             outputStream.close();
 
             int responseCode = connection.getResponseCode();
-            if (responseCode == 200) {
+            if (responseCode == HttpURLConnection.HTTP_OK) {
                 BufferedReader reader = new BufferedReader(new InputStreamReader(connection.getInputStream()));
                 StringBuilder response = new StringBuilder();
                 String line;
@@ -338,67 +215,59 @@ public class UploadService extends Service {
 
                 JSONObject responseJson = new JSONObject(response.toString());
                 if (responseJson.getBoolean("success")) {
-                    String successMsg = "Upload de " + uploadStatus.getGameName() + " concluído com sucesso!";
+                    String successMsg = "Registro de " + uploadStatus.getGameName() + " concluído com sucesso!";
                     showSuccessNotification(successMsg);
                     uploadStatus.setStatus(UploadStatus.Status.COMPLETED);
                     uploadStatus.setProgress(100);
-                    uploadRepository.updateUpload(uploadStatus);
-                    sendUploadBroadcast(ACTION_UPLOAD_COMPLETED, uploadStatus.getId(), uploadStatus.getGameName(), uploadStatus.getFileName(), uploadStatus.getFileSize(), 100, null, uploadStatus.getUploadedBytes());
+                    uploadRepository.updateUpload(uploadStatus); // gameLink is already in uploadStatus
+                    sendUploadBroadcast(ACTION_UPLOAD_COMPLETED, uploadStatus.getId(), uploadStatus.getGameName(), uploadStatus.getFileName(), uploadStatus.getFileSize(), 100, null, uploadStatus.getFileSize());
                 } else {
-                    String error = "Erro na API para " + uploadStatus.getGameName() + ": " + responseJson.getString("message");
-                    showErrorNotification(error);
-                    uploadStatus.setStatus(UploadStatus.Status.ERROR);
-                    uploadStatus.setErrorMessage(error);
-                    uploadRepository.updateUpload(uploadStatus);
-                    sendUploadBroadcast(ACTION_UPLOAD_ERROR, uploadStatus.getId(), uploadStatus.getGameName(), uploadStatus.getFileName(), uploadStatus.getFileSize(), 0, responseJson.getString("message"), uploadStatus.getUploadedBytes());
+                    String error = "Erro da API ao registrar " + uploadStatus.getGameName() + ": " + responseJson.getString("message");
+                    handleError(uploadStatus, error);
                 }
             } else {
-                String error = "Erro na API para " + uploadStatus.getGameName() + ": Código " + responseCode;
-                showErrorNotification(error);
-                uploadStatus.setStatus(UploadStatus.Status.ERROR);
-                uploadStatus.setErrorMessage(error);
-                uploadRepository.updateUpload(uploadStatus);
-                sendUploadBroadcast(ACTION_UPLOAD_ERROR, uploadStatus.getId(), uploadStatus.getGameName(), uploadStatus.getFileName(), uploadStatus.getFileSize(), 0, "Código de erro: " + responseCode, uploadStatus.getUploadedBytes());
+                String error = "Erro de conexão com API ao registrar " + uploadStatus.getGameName() + ": Código " + responseCode;
+                handleError(uploadStatus, error);
             }
-
             connection.disconnect();
-            // tempFile.delete(); // Removed
-
         } catch (Exception e) {
-            Log.e("UploadService", "Erro na API PHP para " + uploadStatus.getGameName() + ": " + e.getMessage());
-            String error = "Erro na API para " + uploadStatus.getGameName() + ": " + e.getMessage();
-            showErrorNotification(error);
-            uploadStatus.setStatus(UploadStatus.Status.ERROR);
-            uploadStatus.setErrorMessage(error);
-            uploadRepository.updateUpload(uploadStatus);
-            sendUploadBroadcast(ACTION_UPLOAD_ERROR, uploadStatus.getId(), uploadStatus.getGameName(), uploadStatus.getFileName(), uploadStatus.getFileSize(), 0, e.getMessage(), uploadStatus.getUploadedBytes());
-            // tempFile.delete(); // Removed
+            Log.e("UploadService", "Exceção ao enviar para API PHP (" + uploadStatus.getGameName() + "): " + e.getMessage(), e);
+            String error = "Exceção na API para " + uploadStatus.getGameName() + ": " + e.getMessage();
+            handleError(uploadStatus, error);
         }
-
-        stopSelf();
+        stopSelfIfNeeded();
     }
+
+    private void handleError(UploadStatus uploadStatus, String errorMessage) {
+        showErrorNotification(errorMessage);
+        uploadStatus.setStatus(UploadStatus.Status.ERROR);
+        uploadStatus.setErrorMessage(errorMessage);
+        // gameLink is already part of uploadStatus and should have been persisted
+        uploadRepository.updateUpload(uploadStatus);
+        sendUploadBroadcast(ACTION_UPLOAD_ERROR, uploadStatus.getId(), uploadStatus.getGameName(), uploadStatus.getFileName(), uploadStatus.getFileSize(), uploadStatus.getProgress(), errorMessage, uploadStatus.getUploadedBytes());
+    }
+
 
     private void sendUploadBroadcast(String action, int id, String gameName, String fileName, long fileSize, int progress, String error, long uploadedBytes) {
         Intent broadcast = new Intent(action);
         broadcast.putExtra("upload_id", id);
         broadcast.putExtra("game_name", gameName);
-        broadcast.putExtra("file_name", fileName);
-        broadcast.putExtra("file_size", fileSize);
+        // fileName might be redundant if gameName is used, or could be derived from gameLink if necessary
+        broadcast.putExtra("file_name", fileName != null ? fileName : gameName);
+        broadcast.putExtra("file_size", fileSize); // This is game_size_bytes
         broadcast.putExtra("progress", progress);
+        // uploaded_bytes is less relevant now, but can be 0 for not started, fileSize for "completed" interaction with API
         broadcast.putExtra("uploaded_bytes", uploadedBytes);
         if (error != null) {
             broadcast.putExtra("error", error);
         }
 
-        if (ACTION_UPLOAD_PROGRESS.equals(action)) {
-            Log.d("UploadService", "Sending UPLOAD_PROGRESS: id=" + id + ", game=" + gameName + ", progress=" + progress + ", uploadedBytes=" + uploadedBytes);
-        } else if (ACTION_UPLOAD_STARTED.equals(action)) {
-            Log.d("UploadService", "Sending UPLOAD_STARTED: id=" + id + ", game=" + gameName + ", file=" + fileName + ", size=" + fileSize);
-        }
+        Log.d("UploadService", "Sending broadcast: " + action + " for " + gameName + " (ID: " + id + ") Prog: " + progress);
         sendBroadcast(broadcast);
     }
 
     private String formatFileSize(long size) {
+        // Keep this utility function as it's used for the API payload
         if (size < 1024) return size + " B";
         if (size < 1024 * 1024) return String.format("%.1f KB", size / 1024.0);
         if (size < 1024 * 1024 * 1024) return String.format("%.1f MB", size / (1024.0 * 1024.0));
@@ -410,70 +279,96 @@ public class UploadService extends Service {
             NotificationChannel channel = new NotificationChannel(
                 CHANNEL_ID,
                 "Upload de Jogos",
-                NotificationManager.IMPORTANCE_LOW
+                NotificationManager.IMPORTANCE_LOW // Or IMPORTANCE_DEFAULT if errors are critical
             );
             channel.setDescription("Notificações de upload de jogos da comunidade");
-            
             NotificationManager manager = getSystemService(NotificationManager.class);
-            manager.createNotificationChannel(channel);
+            if (manager != null) {
+                manager.createNotificationChannel(channel);
+            }
         }
     }
 
     private Notification createNotification(String text, int progress) {
-        Intent intent = new Intent(this, MainActivity.class);
-        PendingIntent pendingIntent = PendingIntent.getActivity(this, 0, intent, 
+        Intent intent = new Intent(this, MainActivity.class); // Or specific upload monitor activity
+        PendingIntent pendingIntent = PendingIntent.getActivity(this, 0, intent,
             PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
 
         NotificationCompat.Builder builder = new NotificationCompat.Builder(this, CHANNEL_ID)
-            .setContentTitle("Upload de Jogo")
+            .setContentTitle("Registro de Jogo") // Changed title
             .setContentText(text)
-            .setSmallIcon(R.drawable.ic_upload)
+            .setSmallIcon(R.drawable.ic_upload) // Keep relevant icon
             .setContentIntent(pendingIntent)
-            .setOngoing(true);
+            .setOngoing(true); // Service is foreground
 
+        // Simplified progress: 0 for initial, 10 for validating, 50 for registering, 100 for done/error
         if (progress > 0 && progress < 100) {
-            builder.setProgress(100, progress, false);
+            builder.setProgress(100, progress, false); // determinate for known steps
+        } else if (progress == 0 && text.toLowerCase().contains("preparando")) {
+             builder.setProgress(100, 0, true); // Indeterminate for initial "preparing"
+        } else if (progress == 10 && text.toLowerCase().contains("validando")) {
+             builder.setProgress(100, 10, true); // Indeterminate for "validating"
+        } else if (progress == 50 && text.toLowerCase().contains("registrando")) {
+             builder.setProgress(100, 50, true); // Indeterminate for "registering"
         }
+        // For 100% (completion) or error, setOngoing(false) and AutoCancel(true) is handled by specific notification methods
 
         return builder.build();
     }
 
     private void updateNotification(String text, int progress) {
-        Notification notification = createNotification(text, progress);
-        notificationManager.notify(NOTIFICATION_ID, notification);
+        // Ensure this is only called when the service is in foreground state
+        if (notificationManager != null) {
+            Notification notification = createNotification(text, progress);
+            notificationManager.notify(NOTIFICATION_ID, notification);
+        }
     }
 
     private void showSuccessNotification(String message) {
         Intent intent = new Intent(this, MainActivity.class);
-        PendingIntent pendingIntent = PendingIntent.getActivity(this, 0, intent, 
+        PendingIntent pendingIntent = PendingIntent.getActivity(this, 0, intent,
             PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
 
         Notification notification = new NotificationCompat.Builder(this, CHANNEL_ID)
-            .setContentTitle("Upload Concluído")
+            .setContentTitle("Registro Concluído") // Changed title
             .setContentText(message)
-            .setSmallIcon(R.drawable.ic_download)
+            .setSmallIcon(R.drawable.ic_download) // Or a success icon like ic_check
             .setContentIntent(pendingIntent)
+            .setOngoing(false) // No longer ongoing
             .setAutoCancel(true)
             .build();
-
-        notificationManager.notify(NOTIFICATION_ID + 1, notification);
+        if (notificationManager != null) {
+            notificationManager.notify(NOTIFICATION_ID, notification); // Use same ID to replace progress
+        }
     }
 
     private void showErrorNotification(String error) {
         Intent intent = new Intent(this, MainActivity.class);
-        PendingIntent pendingIntent = PendingIntent.getActivity(this, 0, intent, 
+        PendingIntent pendingIntent = PendingIntent.getActivity(this, 0, intent,
             PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
 
         Notification notification = new NotificationCompat.Builder(this, CHANNEL_ID)
-            .setContentTitle("Erro no Upload")
+            .setContentTitle("Erro no Registro") // Changed title
             .setContentText(error)
-            .setSmallIcon(R.drawable.ic_cancel)
+            .setSmallIcon(R.drawable.ic_cancel) // Keep error icon
             .setContentIntent(pendingIntent)
+            .setOngoing(false) // No longer ongoing
             .setAutoCancel(true)
+            .setStyle(new NotificationCompat.BigTextStyle().bigText(error)) // For longer error messages
             .build();
-
-        notificationManager.notify(NOTIFICATION_ID + 2, notification);
+        if (notificationManager != null) {
+            notificationManager.notify(NOTIFICATION_ID, notification); // Use same ID to replace progress
+        }
     }
+
+    private void stopSelfIfNeeded() {
+        // Consider if the service should stop after one operation or if it's designed to handle multiple.
+        // For now, assume it stops after each completed/failed operation.
+        Log.d("UploadService", "Upload task finished. Stopping service.");
+        stopForeground(true); // Remove notification
+        stopSelf();
+    }
+
 
     @Override
     public IBinder onBind(Intent intent) {
@@ -483,12 +378,14 @@ public class UploadService extends Service {
     @Override
     public void onDestroy() {
         super.onDestroy();
-        if (executor != null) {
+        if (executor != null && !executor.isShutdown()) {
             executor.shutdownNow();
         }
         if (wakeLock != null && wakeLock.isHeld()) {
             wakeLock.release();
+            Log.d("UploadService", "Service WakeLock released.");
         }
+        Log.d("UploadService", "Service destroyed.");
     }
 }
 

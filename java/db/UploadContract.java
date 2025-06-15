@@ -15,10 +15,8 @@ public final class UploadContract {
         public static final String COLUMN_NAME_ERROR_MESSAGE = "error_message";
         public static final String COLUMN_NAME_START_TIME = "start_time";
         public static final String COLUMN_NAME_UPLOADED_BYTES = "uploaded_bytes";
-        public static final String COLUMN_NAME_ACCESS_KEY = "access_key";
-        public static final String COLUMN_NAME_SECRET_KEY = "secret_key";
-        public static final String COLUMN_NAME_ITEM_IDENTIFIER = "item_identifier";
         public static final String COLUMN_NAME_FILE_URI = "file_uri";
+        public static final String COLUMN_NAME_GAME_LINK = "game_link";
     }
 }
 

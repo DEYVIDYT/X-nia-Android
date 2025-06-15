@@ -27,10 +27,8 @@ public class UploadRepository {
         values.put(UploadContract.UploadEntry.COLUMN_NAME_ERROR_MESSAGE, uploadStatus.getErrorMessage());
         values.put(UploadContract.UploadEntry.COLUMN_NAME_START_TIME, uploadStatus.getStartTime());
         values.put(UploadContract.UploadEntry.COLUMN_NAME_UPLOADED_BYTES, uploadStatus.getUploadedBytes());
-        values.put(UploadContract.UploadEntry.COLUMN_NAME_ACCESS_KEY, uploadStatus.getAccessKey());
-        values.put(UploadContract.UploadEntry.COLUMN_NAME_SECRET_KEY, uploadStatus.getSecretKey());
-        values.put(UploadContract.UploadEntry.COLUMN_NAME_ITEM_IDENTIFIER, uploadStatus.getItemIdentifier());
         values.put(UploadContract.UploadEntry.COLUMN_NAME_FILE_URI, uploadStatus.getFileUri());
+        values.put(UploadContract.UploadEntry.COLUMN_NAME_GAME_LINK, uploadStatus.getGameLink());
 
         long newRowId = db.insert(UploadContract.UploadEntry.TABLE_NAME, null, values);
         db.close();
@@ -48,10 +46,8 @@ public class UploadRepository {
         values.put(UploadContract.UploadEntry.COLUMN_NAME_ERROR_MESSAGE, uploadStatus.getErrorMessage());
         values.put(UploadContract.UploadEntry.COLUMN_NAME_START_TIME, uploadStatus.getStartTime());
         values.put(UploadContract.UploadEntry.COLUMN_NAME_UPLOADED_BYTES, uploadStatus.getUploadedBytes());
-        values.put(UploadContract.UploadEntry.COLUMN_NAME_ACCESS_KEY, uploadStatus.getAccessKey());
-        values.put(UploadContract.UploadEntry.COLUMN_NAME_SECRET_KEY, uploadStatus.getSecretKey());
-        values.put(UploadContract.UploadEntry.COLUMN_NAME_ITEM_IDENTIFIER, uploadStatus.getItemIdentifier());
         values.put(UploadContract.UploadEntry.COLUMN_NAME_FILE_URI, uploadStatus.getFileUri());
+        values.put(UploadContract.UploadEntry.COLUMN_NAME_GAME_LINK, uploadStatus.getGameLink());
 
         String selection = UploadContract.UploadEntry._ID + " = ?";
         String[] selectionArgs = { String.valueOf(uploadStatus.getId()) };
@@ -79,10 +75,8 @@ public class UploadRepository {
                 UploadContract.UploadEntry.COLUMN_NAME_ERROR_MESSAGE,
                 UploadContract.UploadEntry.COLUMN_NAME_START_TIME,
                 UploadContract.UploadEntry.COLUMN_NAME_UPLOADED_BYTES,
-                UploadContract.UploadEntry.COLUMN_NAME_ACCESS_KEY,
-                UploadContract.UploadEntry.COLUMN_NAME_SECRET_KEY,
-                UploadContract.UploadEntry.COLUMN_NAME_ITEM_IDENTIFIER,
-                UploadContract.UploadEntry.COLUMN_NAME_FILE_URI
+                UploadContract.UploadEntry.COLUMN_NAME_FILE_URI,
+                UploadContract.UploadEntry.COLUMN_NAME_GAME_LINK
         };
 
         Cursor cursor = db.query(
@@ -105,12 +99,10 @@ public class UploadRepository {
             String errorMessage = cursor.getString(cursor.getColumnIndexOrThrow(UploadContract.UploadEntry.COLUMN_NAME_ERROR_MESSAGE));
             long startTime = cursor.getLong(cursor.getColumnIndexOrThrow(UploadContract.UploadEntry.COLUMN_NAME_START_TIME));
             long uploadedBytes = cursor.getLong(cursor.getColumnIndexOrThrow(UploadContract.UploadEntry.COLUMN_NAME_UPLOADED_BYTES));
-            String accessKey = cursor.getString(cursor.getColumnIndexOrThrow(UploadContract.UploadEntry.COLUMN_NAME_ACCESS_KEY));
-            String secretKey = cursor.getString(cursor.getColumnIndexOrThrow(UploadContract.UploadEntry.COLUMN_NAME_SECRET_KEY));
-            String itemIdentifier = cursor.getString(cursor.getColumnIndexOrThrow(UploadContract.UploadEntry.COLUMN_NAME_ITEM_IDENTIFIER));
             String fileUri = cursor.getString(cursor.getColumnIndexOrThrow(UploadContract.UploadEntry.COLUMN_NAME_FILE_URI));
+            String gameLink = cursor.getString(cursor.getColumnIndexOrThrow(UploadContract.UploadEntry.COLUMN_NAME_GAME_LINK));
 
-            uploads.add(new UploadStatus(id, gameName, fileName, fileSize, status, progress, errorMessage, startTime, uploadedBytes, accessKey, secretKey, itemIdentifier, fileUri));
+            uploads.add(new UploadStatus(id, gameName, fileName, fileSize, status, progress, errorMessage, startTime, uploadedBytes, fileUri, gameLink));
         }
         cursor.close();
         db.close();
@@ -139,10 +131,8 @@ public class UploadRepository {
                 UploadContract.UploadEntry.COLUMN_NAME_ERROR_MESSAGE,
                 UploadContract.UploadEntry.COLUMN_NAME_START_TIME,
                 UploadContract.UploadEntry.COLUMN_NAME_UPLOADED_BYTES,
-                UploadContract.UploadEntry.COLUMN_NAME_ACCESS_KEY,
-                UploadContract.UploadEntry.COLUMN_NAME_SECRET_KEY,
-                UploadContract.UploadEntry.COLUMN_NAME_ITEM_IDENTIFIER,
-                UploadContract.UploadEntry.COLUMN_NAME_FILE_URI
+                UploadContract.UploadEntry.COLUMN_NAME_FILE_URI,
+                UploadContract.UploadEntry.COLUMN_NAME_GAME_LINK
         };
 
         String selection = UploadContract.UploadEntry._ID + " = ?";
@@ -167,12 +157,10 @@ public class UploadRepository {
             String errorMessage = cursor.getString(cursor.getColumnIndexOrThrow(UploadContract.UploadEntry.COLUMN_NAME_ERROR_MESSAGE));
             long startTime = cursor.getLong(cursor.getColumnIndexOrThrow(UploadContract.UploadEntry.COLUMN_NAME_START_TIME));
             long uploadedBytes = cursor.getLong(cursor.getColumnIndexOrThrow(UploadContract.UploadEntry.COLUMN_NAME_UPLOADED_BYTES));
-            String accessKey = cursor.getString(cursor.getColumnIndexOrThrow(UploadContract.UploadEntry.COLUMN_NAME_ACCESS_KEY));
-            String secretKey = cursor.getString(cursor.getColumnIndexOrThrow(UploadContract.UploadEntry.COLUMN_NAME_SECRET_KEY));
-            String itemIdentifier = cursor.getString(cursor.getColumnIndexOrThrow(UploadContract.UploadEntry.COLUMN_NAME_ITEM_IDENTIFIER));
             String fileUri = cursor.getString(cursor.getColumnIndexOrThrow(UploadContract.UploadEntry.COLUMN_NAME_FILE_URI));
+            String gameLink = cursor.getString(cursor.getColumnIndexOrThrow(UploadContract.UploadEntry.COLUMN_NAME_GAME_LINK));
 
-            uploadStatus = new UploadStatus(id, gameName, fileName, fileSize, status, progress, errorMessage, startTime, uploadedBytes, accessKey, secretKey, itemIdentifier, fileUri);
+            uploadStatus = new UploadStatus(id, gameName, fileName, fileSize, status, progress, errorMessage, startTime, uploadedBytes, fileUri, gameLink);
         }
         cursor.close();
         db.close();

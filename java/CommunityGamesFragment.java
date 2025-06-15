@@ -1,34 +1,38 @@
 package com.winlator.Download;
 
-import android.app.Activity;
 import android.app.AlertDialog;
 import android.content.Intent;
-import android.content.SharedPreferences;
-import android.database.Cursor;
-import android.net.Uri;
+// import android.content.SharedPreferences; // Removed
+// import android.database.Cursor; // Removed for file selection
+// import android.net.Uri; // Removed for file selection
 import android.os.Bundle;
-import android.provider.OpenableColumns;
+// import android.provider.OpenableColumns; // Removed for file selection
 import android.text.Editable;
+import android.text.TextUtils;
 import android.text.TextWatcher;
+import android.util.Log;
 import android.view.LayoutInflater;
 import android.view.View;
 import android.view.ViewGroup;
 import android.widget.Button;
-import android.widget.EditText;
+import android.widget.EditText; // Keep for game name
+import android.widget.SeekBar;
 import android.widget.TextView;
 import android.widget.Toast;
 
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
+import androidx.core.content.ContextCompat;
 import androidx.fragment.app.Fragment;
 import androidx.recyclerview.widget.LinearLayoutManager;
 import androidx.recyclerview.widget.RecyclerView;
 
 import com.google.android.material.floatingactionbutton.FloatingActionButton;
+import com.google.android.material.textfield.TextInputEditText;
 import com.winlator.Download.adapter.CommunityGamesAdapter;
 import com.winlator.Download.db.UploadRepository;
 import com.winlator.Download.model.CommunityGame;
-import com.winlator.Download.model.UploadStatus;
+// import com.winlator.Download.model.UploadStatus; // Not directly used for creation here anymore
 import com.winlator.Download.service.UploadService;
 
 import org.json.JSONArray;
@@ -46,22 +50,23 @@ import java.util.concurrent.Executors;
 
 public class CommunityGamesFragment extends Fragment {
 
-    private static final int PICK_FILE_REQUEST = 1001;
+    // private static final int PICK_FILE_REQUEST = 1001; // Removed
     
     private RecyclerView recyclerView;
     private CommunityGamesAdapter adapter;
     private List<CommunityGame> gamesList;
     private ExecutorService executor;
     private FloatingActionButton fabUpload;
-    private UploadRepository uploadRepository;
+    private UploadRepository uploadRepository; // Keep if needed for other operations, or remove if only for upload
     
-    // Dialog variables
-    private Uri selectedFileUri;
-    private String selectedFileName;
-    private long selectedFileSize;
-    private EditText etDialogGameName;
-    private TextView tvDialogSelectedFile;
+    // Dialog variables - updated
+    private EditText etDialogGameName; // For game name
+    private TextInputEditText etDialogGameLink;
+    private SeekBar sbDialogGameSize;
+    private TextView tvDialogSelectedSize;
+    private TextInputEditText etDialogManualGameSize;
     private Button btnDialogUpload;
+    private boolean isSeekBarChanging = false; // To prevent TextWatcher loop
 
     @Nullable
     @Override
@@ -91,17 +96,17 @@ public class CommunityGamesFragment extends Fragment {
     }
 
     private void showUploadDialog() {
-        SharedPreferences prefs = requireContext().getSharedPreferences("community_games", requireContext().MODE_PRIVATE);
-        String accessKey = prefs.getString("access_key", "");
-        String secretKey = prefs.getString("secret_key", "");
-        String itemIdentifier = prefs.getString("item_identifier", "");
+        // SharedPreferences prefs = requireContext().getSharedPreferences("community_games", requireContext().MODE_PRIVATE); // Removed IA creds
+        // String accessKey = prefs.getString("access_key", ""); // Removed
+        // String secretKey = prefs.getString("secret_key", ""); // Removed
+        // String itemIdentifier = prefs.getString("item_identifier", ""); // Removed
 
-        if (accessKey.isEmpty() || secretKey.isEmpty() || itemIdentifier.isEmpty()) {
-            Toast.makeText(getContext(), "Configure primeiro as credenciais do Internet Archive nas configurações", Toast.LENGTH_LONG).show();
-            Intent intent = new Intent(getContext(), SettingsActivity.class);
-            startActivity(intent);
-            return;
-        }
+        // if (accessKey.isEmpty() || secretKey.isEmpty() || itemIdentifier.isEmpty()) { // Removed IA check
+        //     Toast.makeText(getContext(), "Configure primeiro as credenciais do Internet Archive nas configurações", Toast.LENGTH_LONG).show();
+        //     Intent intent = new Intent(getContext(), SettingsActivity.class);
+        //     startActivity(intent);
+        //     return;
+        // }
 
         AlertDialog.Builder builder = new AlertDialog.Builder(getContext());
         View dialogView = LayoutInflater.from(getContext()).inflate(R.layout.dialog_upload_game, null);
@@ -109,168 +114,196 @@ public class CommunityGamesFragment extends Fragment {
 
         AlertDialog dialog = builder.create();
 
-        this.etDialogGameName = dialogView.findViewById(R.id.et_dialog_game_name);
-        Button btnSelectFile = dialogView.findViewById(R.id.btn_dialog_select_file);
-        this.tvDialogSelectedFile = dialogView.findViewById(R.id.tv_dialog_selected_file);
+        etDialogGameName = dialogView.findViewById(R.id.et_dialog_game_name);
+        etDialogGameLink = dialogView.findViewById(R.id.et_dialog_game_link);
+        sbDialogGameSize = dialogView.findViewById(R.id.sb_dialog_game_size);
+        tvDialogSelectedSize = dialogView.findViewById(R.id.tv_dialog_selected_size);
+        etDialogManualGameSize = dialogView.findViewById(R.id.et_dialog_game_size);
+        // Button btnSelectFile = dialogView.findViewById(R.id.btn_dialog_select_file); // Removed
+        // tvDialogSelectedFile = dialogView.findViewById(R.id.tv_dialog_selected_file); // Removed
         Button btnCancel = dialogView.findViewById(R.id.btn_dialog_cancel);
-        this.btnDialogUpload = dialogView.findViewById(R.id.btn_dialog_upload);
+        btnDialogUpload = dialogView.findViewById(R.id.btn_dialog_upload);
 
-        selectedFileUri = null;
-        selectedFileName = null;
-        selectedFileSize = 0;
-        updateUploadButtonState();
+        // Initialize UI states
+        tvDialogSelectedSize.setText(sbDialogGameSize.getProgress() + " GB");
+        updateUploadButtonState(); // Initial state based on empty fields
 
-        this.etDialogGameName.addTextChangedListener(new TextWatcher() {
+        TextWatcher textWatcherForEnableButton = new TextWatcher() {
+            @Override public void beforeTextChanged(CharSequence s, int start, int count, int after) {}
+            @Override public void onTextChanged(CharSequence s, int start, int before, int count) {}
+            @Override public void afterTextChanged(Editable s) { updateUploadButtonState(); }
+        };
+
+        etDialogGameName.addTextChangedListener(textWatcherForEnableButton);
+        etDialogGameLink.addTextChangedListener(textWatcherForEnableButton);
+
+        sbDialogGameSize.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener() {
             @Override
-            public void beforeTextChanged(CharSequence s, int start, int count, int after) {}
+            public void onProgressChanged(SeekBar seekBar, int progress, boolean fromUser) {
+                if (fromUser) {
+                    isSeekBarChanging = true;
+                    tvDialogSelectedSize.setText(progress + " GB");
+                    etDialogManualGameSize.setText(""); // Clear manual input
+                    updateUploadButtonState();
+                    isSeekBarChanging = false;
+                }
+            }
+            @Override public void onStartTrackingTouch(SeekBar seekBar) {}
+            @Override public void onStopTrackingTouch(SeekBar seekBar) {}
+        });
 
-            @Override
-            public void onTextChanged(CharSequence s, int start, int before, int count) {}
+        etDialogManualGameSize.addTextChangedListener(new TextWatcher() {
+            @Override public void beforeTextChanged(CharSequence s, int start, int count, int after) {}
+            @Override public void onTextChanged(CharSequence s, int start, int before, int count) {}
+            @Override public void afterTextChanged(Editable s) {
+                if (isSeekBarChanging) return; // Prevent loop if change is from SeekBar
 
-            @Override
-            public void afterTextChanged(Editable s) {
+                String sizeStr = s.toString().trim();
+                if (!sizeStr.isEmpty()) {
+                    long bytes = parseSizeStringToBytes(sizeStr);
+                    int gb = 0;
+                    if (bytes > 0) {
+                        gb = (int) (bytes / (1024 * 1024 * 1024));
+                        if (gb > sbDialogGameSize.getMax()) gb = sbDialogGameSize.getMax();
+                        if (gb < 0) gb = 0; // Should not happen with parseSizeStringToBytes
+                    }
+                    sbDialogGameSize.setProgress(gb); // Update SeekBar progress
+                    tvDialogSelectedSize.setText(gb + " GB"); // Reflect this on the label too
+                }
                 updateUploadButtonState();
             }
         });
 
-        btnSelectFile.setOnClickListener(v -> {
-            Intent intent = new Intent(Intent.ACTION_OPEN_DOCUMENT); // Changed to ACTION_OPEN_DOCUMENT
-            intent.setType("*/*"); // Set a general type
-            intent.putExtra(Intent.EXTRA_MIME_TYPES, new String[]{
-                "application/zip",
-                "application/x-zip-compressed",
-                "application/x-rar-compressed",
-                "application/vnd.rar",
-                "application/x-7z-compressed"
-            });
-            intent.addCategory(Intent.CATEGORY_OPENABLE);
-            intent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION); // Added flag for persistable permission
-            startActivityForResult(intent, PICK_FILE_REQUEST);
-        });
+        // btnSelectFile.setOnClickListener(v -> { ... }); // Removed file selection logic
 
         btnCancel.setOnClickListener(v -> {
             dialog.dismiss();
-            cleanupDialogViewReferences();
+            // cleanupDialogViewReferences(); // Handled by onDismiss
         });
 
-        this.btnDialogUpload.setOnClickListener(v -> {
-            String gameName = this.etDialogGameName.getText().toString().trim();
-            
-            if (gameName.isEmpty() || selectedFileUri == null) {
-                Toast.makeText(getContext(), "Preencha o nome do jogo e selecione um arquivo", Toast.LENGTH_SHORT).show();
+        btnDialogUpload.setOnClickListener(v -> {
+            String gameName = etDialogGameName.getText().toString().trim();
+            String gameLink = etDialogGameLink.getText().toString().trim();
+            long gameSizeBytes = 0;
+
+            String manualSizeStr = etDialogManualGameSize.getText().toString().trim();
+            if (!TextUtils.isEmpty(manualSizeStr)) {
+                gameSizeBytes = parseSizeStringToBytes(manualSizeStr);
+            } else {
+                gameSizeBytes = (long) sbDialogGameSize.getProgress() * 1024 * 1024 * 1024;
+            }
+
+            if (TextUtils.isEmpty(gameName)) {
+                etDialogGameName.setError("Nome do jogo é obrigatório");
+                Toast.makeText(getContext(), "Nome do jogo é obrigatório", Toast.LENGTH_SHORT).show();
+                return;
+            }
+            if (TextUtils.isEmpty(gameLink)) {
+                 etDialogGameLink.setError("Link do jogo é obrigatório");
+                Toast.makeText(getContext(), "Link do jogo é obrigatório", Toast.LENGTH_SHORT).show();
+                return;
+            }
+            // Basic URL validation (more robust validation server-side)
+            try {
+                new URL(gameLink);
+            } catch (Exception e) {
+                etDialogGameLink.setError("Link do jogo inválido");
+                Toast.makeText(getContext(), "Link do jogo inválido", Toast.LENGTH_SHORT).show();
+                return;
+            }
+            if (gameSizeBytes <= 0) {
+                Toast.makeText(getContext(), "Tamanho do jogo deve ser maior que zero", Toast.LENGTH_SHORT).show();
+                 etDialogManualGameSize.setError("Tamanho inválido");
                 return;
             }
 
-            // Create and save UploadStatus to DB first
-            UploadStatus newUpload = new UploadStatus(gameName, selectedFileName, selectedFileSize, accessKey, secretKey, itemIdentifier, selectedFileUri.toString());
-            long uploadId = uploadRepository.insertUpload(newUpload);
-            newUpload.setId((int) uploadId);
-
-            // Start upload service
+            // UploadService Intent
             Intent uploadIntent = new Intent(getContext(), UploadService.class);
-            uploadIntent.putExtra("upload_id", newUpload.getId());
+            // uploadIntent.putExtra("upload_id", newUpload.getId()); // ID will be generated by service/repo
             uploadIntent.putExtra("game_name", gameName);
-            uploadIntent.putExtra("access_key", accessKey);
-            uploadIntent.putExtra("secret_key", secretKey);
-            uploadIntent.putExtra("item_identifier", itemIdentifier);
-            uploadIntent.putExtra("file_uri", selectedFileUri.toString());
-            uploadIntent.putExtra("file_name", selectedFileName);
-            uploadIntent.putExtra("file_size", selectedFileSize);
+            uploadIntent.putExtra("game_link", gameLink);
+            uploadIntent.putExtra("game_size_bytes", gameSizeBytes);
+            uploadIntent.putExtra("file_name", gameName); // Using gameName as fileName
+
+            ContextCompat.startForegroundService(requireContext(), uploadIntent);
             
-            requireContext().startForegroundService(uploadIntent);
-            
-            Toast.makeText(getContext(), "Upload iniciado", Toast.LENGTH_SHORT).show();
+            Toast.makeText(getContext(), "Registro de jogo iniciado", Toast.LENGTH_SHORT).show();
             dialog.dismiss();
-            cleanupDialogViewReferences();
+            // cleanupDialogViewReferences(); // Handled by onDismiss
         });
 
         dialog.setOnDismissListener(dialogInterface -> cleanupDialogViewReferences());
         dialog.show();
     }
 
-    @Override
-    public void onActivityResult(int requestCode, int resultCode, Intent data) {
-        super.onActivityResult(requestCode, resultCode, data);
-        
-        if (requestCode == PICK_FILE_REQUEST && resultCode == Activity.RESULT_OK && data != null) {
-            selectedFileUri = data.getData();
-            if (selectedFileUri != null) {
-                try {
-                    final int takeFlags = Intent.FLAG_GRANT_READ_URI_PERMISSION;
-                    // Attempt to take persistable URI permission
-                    requireContext().getContentResolver().takePersistableUriPermission(selectedFileUri, takeFlags);
-                    // If successful, proceed to get file info
-                    getFileInfo(selectedFileUri);
-                } catch (SecurityException e) {
-                    android.util.Log.e("CommunityGamesFragment", "Failed to take persistable URI permission for: " + selectedFileUri, e);
-                    Toast.makeText(getContext(), "Erro: Não foi possível obter permissão de acesso permanente ao arquivo. Tente selecionar o arquivo novamente.", Toast.LENGTH_LONG).show();
+    // onActivityResult and getFileInfo removed as file selection is gone.
 
-                    // Reset file selection state as permission was not granted
-                    this.selectedFileUri = null;
-                    this.selectedFileName = null;
-                    this.selectedFileSize = 0;
-                    if (this.tvDialogSelectedFile != null) {
-                         this.tvDialogSelectedFile.setText("Falha ao obter permissão do arquivo.");
-                    }
-                    if (this.etDialogGameName != null && this.btnDialogUpload != null) { // Check for null if dialog might be dismissed
-                        updateUploadButtonState(); // Disable upload button
-                    }
-                }
-            } else {
-                // Handle case where selectedFileUri is null (though data.getData() should provide it if resultCode is OK)
-                if (this.tvDialogSelectedFile != null) {
-                  this.tvDialogSelectedFile.setText("Nenhum arquivo selecionado.");
-                }
-                // Ensure button state is updated if URI is null
-                if (this.etDialogGameName != null && this.btnDialogUpload != null) {
-                    updateUploadButtonState();
-                }
-            }
+    private long parseSizeStringToBytes(String sizeStr) {
+        if (sizeStr == null || sizeStr.trim().isEmpty()) {
+            return 0;
         }
-    }
-
-    private void getFileInfo(Uri uri) {
+        sizeStr = sizeStr.toUpperCase().trim();
+        long multiplier = 1; // Default to bytes if no unit
         try {
-            Cursor cursor = requireContext().getContentResolver().query(uri, null, null, null, null);
-            if (cursor != null && cursor.moveToFirst()) {
-                int nameIndex = cursor.getColumnIndex(OpenableColumns.DISPLAY_NAME);
-                int sizeIndex = cursor.getColumnIndex(OpenableColumns.SIZE);
-                
-                selectedFileName = cursor.getString(nameIndex);
-                selectedFileSize = cursor.getLong(sizeIndex);
-                
-                if (this.tvDialogSelectedFile != null) {
-                    this.tvDialogSelectedFile.setText("Arquivo: " + selectedFileName + " (" + formatFileSize(selectedFileSize) + ")");
-                }
-                updateUploadButtonState();
-                
-                cursor.close();
+            if (sizeStr.endsWith("GB")) {
+                multiplier = 1024L * 1024L * 1024L;
+                sizeStr = sizeStr.substring(0, sizeStr.length() - 2).trim();
+            } else if (sizeStr.endsWith("MB")) {
+                multiplier = 1024L * 1024L;
+                sizeStr = sizeStr.substring(0, sizeStr.length() - 2).trim();
+            } else if (sizeStr.endsWith("KB")) {
+                multiplier = 1024L;
+                sizeStr = sizeStr.substring(0, sizeStr.length() - 2).trim();
+            } else if (sizeStr.endsWith("B")) { // Explicit bytes
+                 sizeStr = sizeStr.substring(0, sizeStr.length() - 1).trim();
             }
-        } catch (Exception e) {
-            Toast.makeText(getContext(), "Erro ao obter informações do arquivo", Toast.LENGTH_SHORT).show();
+            // Remove any non-numeric characters that might remain after unit stripping (e.g. spaces)
+            // And handle comma as decimal separator for some locales
+            sizeStr = sizeStr.replaceAll("[^\\d.,]", "").replace(',', '.');
+            if (sizeStr.isEmpty()) return 0;
+
+            double value = Double.parseDouble(sizeStr);
+            return (long) (value * multiplier);
+        } catch (NumberFormatException e) {
+            Log.e("CommunityGamesFragment", "Error parsing size string: " + sizeStr, e);
+            return 0; // Invalid format
         }
     }
 
     private void updateUploadButtonState() {
-        if (this.btnDialogUpload == null || this.etDialogGameName == null) {
-            return;
+        if (btnDialogUpload == null || etDialogGameName == null || etDialogGameLink == null || etDialogManualGameSize == null || sbDialogGameSize == null) {
+            return; // Dialog not fully initialized or already dismissed
         }
-        String gameName = this.etDialogGameName.getText().toString().trim();
-        if (!gameName.isEmpty() && this.selectedFileUri != null) {
-            this.btnDialogUpload.setEnabled(true);
+        String gameName = etDialogGameName.getText().toString().trim();
+        String gameLink = etDialogGameLink.getText().toString().trim();
+
+        boolean isSizeValid = false;
+        String manualSizeStr = etDialogManualGameSize.getText().toString().trim();
+        if (!TextUtils.isEmpty(manualSizeStr)) {
+            if (parseSizeStringToBytes(manualSizeStr) > 0) {
+                isSizeValid = true;
+            }
         } else {
-            this.btnDialogUpload.setEnabled(false);
+            if (sbDialogGameSize.getProgress() > 0) {
+                isSizeValid = true;
+            }
         }
+
+        btnDialogUpload.setEnabled(!TextUtils.isEmpty(gameName) && !TextUtils.isEmpty(gameLink) && isSizeValid);
     }
 
     private void cleanupDialogViewReferences() {
-        this.etDialogGameName = null;
-        this.tvDialogSelectedFile = null;
-        this.btnDialogUpload = null;
+        etDialogGameName = null;
+        etDialogGameLink = null;
+        sbDialogGameSize = null;
+        tvDialogSelectedSize = null;
+        etDialogManualGameSize = null;
+        btnDialogUpload = null;
     }
 
+    // formatFileSize can be kept if used elsewhere, or removed if only for old dialog
     private String formatFileSize(long size) {
-        if (size < 1024) return size + " B";
+        if (size < 1024) return size + " B"; // Ensure this utility is still needed. UploadService has one.
         if (size < 1024 * 1024) return String.format("%.1f KB", size / 1024.0);
         if (size < 1024 * 1024 * 1024) return String.format("%.1f MB", size / (1024.0 * 1024.0));
         return String.format("%.1f GB", size / (1024.0 * 1024.0 * 1024.0));

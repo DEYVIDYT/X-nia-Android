@@ -20,12 +20,11 @@ public class UploadStatus {
     private String errorMessage;
     private long startTime;
     private long uploadedBytes;
-    private String accessKey; // New field
-    private String secretKey; // New field
-    private String itemIdentifier; // New field
-    private String fileUri; // New field
+    private String fileUri;
+    private String gameLink; // New field
 
-    public UploadStatus(String gameName, String fileName, long fileSize, String accessKey, String secretKey, String itemIdentifier, String fileUri) {
+    // Constructor for new uploads, fileUri and gameLink can be null
+    public UploadStatus(String gameName, String fileName, long fileSize, String fileUri, String gameLink) {
         this.gameName = gameName;
         this.fileName = fileName;
         this.fileSize = fileSize;
@@ -33,13 +32,12 @@ public class UploadStatus {
         this.progress = 0;
         this.startTime = System.currentTimeMillis();
         this.uploadedBytes = 0;
-        this.accessKey = accessKey;
-        this.secretKey = secretKey;
-        this.itemIdentifier = itemIdentifier;
         this.fileUri = fileUri;
+        this.gameLink = gameLink;
     }
 
-    public UploadStatus(int id, String gameName, String fileName, long fileSize, Status status, int progress, String errorMessage, long startTime, long uploadedBytes, String accessKey, String secretKey, String itemIdentifier, String fileUri) {
+    // Constructor for restoring from database or full state
+    public UploadStatus(int id, String gameName, String fileName, long fileSize, Status status, int progress, String errorMessage, long startTime, long uploadedBytes, String fileUri, String gameLink) {
         this.id = id;
         this.gameName = gameName;
         this.fileName = fileName;
@@ -49,10 +47,8 @@ public class UploadStatus {
         this.errorMessage = errorMessage;
         this.startTime = startTime;
         this.uploadedBytes = uploadedBytes;
-        this.accessKey = accessKey;
-        this.secretKey = secretKey;
-        this.itemIdentifier = itemIdentifier;
         this.fileUri = fileUri;
+        this.gameLink = gameLink;
     }
 
     public int getId() {
@@ -135,36 +131,20 @@ public class UploadStatus {
         return formatBytes(uploadedBytes);
     }
 
-    public String getAccessKey() {
-        return accessKey;
-    }
-
-    public void setAccessKey(String accessKey) {
-        this.accessKey = accessKey;
-    }
-
-    public String getSecretKey() {
-        return secretKey;
-    }
-
-    public void setSecretKey(String secretKey) {
-        this.secretKey = secretKey;
-    }
-
-    public String getItemIdentifier() {
-        return itemIdentifier;
-    }
-
-    public void setItemIdentifier(String itemIdentifier) {
-        this.itemIdentifier = itemIdentifier;
-    }
-
     public String getFileUri() {
         return fileUri;
     }
 
     public void setFileUri(String fileUri) {
         this.fileUri = fileUri;
+    }
+
+    public String getGameLink() {
+        return gameLink;
+    }
+
+    public void setGameLink(String gameLink) {
+        this.gameLink = gameLink;
     }
 
     public String getStatusText() {
@@ -188,21 +168,6 @@ public class UploadStatus {
         String pre = ("KMGTPE").charAt(exp-1) + "";
         return String.format(Locale.getDefault(), "%.1f %sB", bytes / Math.pow(1024, exp), pre);
     }
-
-    public UploadStatus(String gameName, String fileName, long fileSize) {
-        this.gameName = gameName;
-        this.fileName = fileName;
-        this.fileSize = fileSize;
-        this.status = Status.UPLOADING;
-        this.progress = 0;
-        this.startTime = System.currentTimeMillis();
-        this.uploadedBytes = 0;
-        this.accessKey = null;
-        this.secretKey = null;
-        this.itemIdentifier = null;
-        this.fileUri = null;
-    }
-
 
 }
 
