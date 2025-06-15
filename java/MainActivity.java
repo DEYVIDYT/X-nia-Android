@@ -5,7 +5,9 @@ import android.content.pm.PackageManager; // Added
 import androidx.core.app.ActivityCompat; // Added
 import androidx.core.content.ContextCompat; // Added
 import androidx.annotation.NonNull; // Added
-import androidx.appcompat.app.AlertDialog; // Added
+// import androidx.appcompat.app.AlertDialog; // Will be replaced by MaterialAlertDialogBuilder for building
+import androidx.appcompat.app.AlertDialog; // Still needed for the dialog instance type
+import com.google.android.material.dialog.MaterialAlertDialogBuilder; // Added
 import androidx.appcompat.app.AppCompatActivity;
 import androidx.fragment.app.Fragment;
 import androidx.fragment.app.FragmentManager;
@@ -156,7 +158,7 @@ public class MainActivity extends AppCompatActivity {
     }
 
     private void showPermissionDeniedDialog(boolean goToSettings) {
-        AlertDialog.Builder builder = new AlertDialog.Builder(this);
+        MaterialAlertDialogBuilder builder = new MaterialAlertDialogBuilder(this); // Changed
         builder.setTitle("Permissão Necessária");
         builder.setMessage("Esta aplicação precisa da permissão de armazenamento para funcionar corretamente. Por favor, conceda a permissão.");
         builder.setCancelable(false); // User must interact with the dialog
