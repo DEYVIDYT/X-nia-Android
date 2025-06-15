@@ -1,6 +1,7 @@
 package com.winlator.Download;
 
-import android.app.AlertDialog;
+import android.app.AlertDialog; // Keep for variable type if needed, or remove if var type changes
+import com.google.android.material.dialog.MaterialAlertDialogBuilder; // Added
 import android.content.Intent;
 // import android.content.SharedPreferences; // Removed
 // import android.database.Cursor; // Removed for file selection
@@ -108,11 +109,12 @@ public class CommunityGamesFragment extends Fragment {
         //     return;
         // }
 
-        AlertDialog.Builder builder = new AlertDialog.Builder(getContext());
+        // AlertDialog.Builder builder = new AlertDialog.Builder(getContext()); // Old
+        MaterialAlertDialogBuilder builder = new MaterialAlertDialogBuilder(requireContext()); // New
         View dialogView = LayoutInflater.from(getContext()).inflate(R.layout.dialog_upload_game, null);
         builder.setView(dialogView);
 
-        AlertDialog dialog = builder.create();
+        AlertDialog dialog = builder.create(); // This is now an androidx.appcompat.app.AlertDialog
 
         etDialogGameName = dialogView.findViewById(R.id.et_dialog_game_name);
         etDialogGameLink = dialogView.findViewById(R.id.et_dialog_game_link);
