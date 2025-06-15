@@ -61,7 +61,7 @@ public class MainActivity extends AppCompatActivity {
     private TextView errorTextView;
 
     private static final String API_URL = "https://raw.githubusercontent.com/DEYVIDYT/WINLATOR-DOWNLOAD/refs/heads/main/WINLATOR.json";
-    private static final int STORAGE_PERMISSION_CODE = 101; // Added
+    private static final int STORAGE_PERMISSION_CODE = 101;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -76,6 +76,18 @@ public class MainActivity extends AppCompatActivity {
         viewPager = findViewById(R.id.view_pager);
         progressBar = findViewById(R.id.progressBar);
         errorTextView = findViewById(R.id.errorTextView);
+
+        // Initialize apiData if not already
+        apiData = new LinkedHashMap<>();
+
+        // Initialize adapter with empty data
+        pagerAdapter = new MyPagerAdapter(this);
+        viewPager.setAdapter(pagerAdapter);
+
+        // Setup TabLayoutMediator here, potentially with initial/empty titles
+        new TabLayoutMediator(tabLayout, viewPager,
+            (tab, position) -> tab.setText(pagerAdapter.getPageTitle(position))
+        ).attach();
 
         // Adicionando logs para depuração
         if (progressBar == null) {
@@ -226,47 +238,68 @@ public class MainActivity extends AppCompatActivity {
         return super.onOptionsItemSelected(item);
     }
 
-    private void setupViewPagerAndTabs() {
-        pagerAdapter = new MyPagerAdapter(this, apiData);
-        viewPager.setAdapter(pagerAdapter);
-
-        new TabLayoutMediator(tabLayout, viewPager, (tab, position) -> {
-            if (position == 0) {
-                tab.setText("Jogos da Comunidade");
-            } else {
-                List<String> categories = new ArrayList<>(apiData.keySet());
-                tab.setText(categories.get(position - 1));
-            }
-        }).attach();
-    }
+    // private void setupViewPagerAndTabs() { // This method will be removed or its logic incorporated elsewhere
+    //     // pagerAdapter = new MyPagerAdapter(this, apiData); // Adapter is now initialized in onCreate
+    //     // viewPager.setAdapter(pagerAdapter); // Adapter is set in onCreate
+    //
+    //     // new TabLayoutMediator(tabLayout, viewPager, (tab, position) -> {
+    //     //     tab.setText(pagerAdapter.getPageTitle(position)); // Titles from adapter
+    //     // }).attach();
+    // }
 
     private static class MyPagerAdapter extends FragmentStateAdapter {
-        private final Map<String, List<Release>> data;
-        private final List<String> categories;
+        private Map<String, List<Release>> data; // Now mutable
+        private List<String> categories; // Now mutable
 
-        public MyPagerAdapter(AppCompatActivity activity, Map<String, List<Release>> data) {
+        public MyPagerAdapter(AppCompatActivity activity) {
             super(activity);
-            this.data = data;
-            this.categories = new ArrayList<>(data.keySet());
+            this.data = new LinkedHashMap<>(); // Initialize with empty data
+            this.categories = new ArrayList<>();
         }
+
+        public void updateData(Map<String, List<Release>> newData) {
+            this.data.clear();
+            this.categories.clear();
+            if (newData != null) {
+                this.data.putAll(newData);
+                this.categories.addAll(newData.keySet());
+            }
+            notifyDataSetChanged(); // Crucial!
+        }
+
+        public CharSequence getPageTitle(int position) {
+            if (position == 0) {
+                return "Jogos da Comunidade";
+            } else {
+                if (position -1 < categories.size()) {
+                    return categories.get(position - 1);
+                }
+                return ""; // Should not happen if getItemCount is correct
+            }
+        }
+
 
         @Override
         public Fragment createFragment(int position) {
-            // Primeira aba sempre será Jogos da Comunidade
             if (position == 0) {
                 return new CommunityGamesFragment();
             } else {
-                // Abas seguintes são as categorias da API
-                String category = categories.get(position - 1);
-                List<Release> categoryReleases = data.get(category);
-                return ReleasesFragment.newInstance(category, categoryReleases);
+                if (position - 1 < categories.size()) {
+                    String category = categories.get(position - 1);
+                    List<Release> categoryReleases = data.get(category);
+                    if (categoryReleases == null) { // Should not happen if data is consistent
+                        categoryReleases = new ArrayList<>();
+                    }
+                    return ReleasesFragment.newInstance(category, categoryReleases);
+                }
+                // Should not happen if getItemCount is correct
+                return new Fragment(); // Return an empty fragment as a fallback
             }
         }
 
         @Override
         public int getItemCount() {
-            // +1 para incluir a aba de Jogos da Comunidade
-            return categories.size() + 1;
+            return categories.size() + 1; // +1 for CommunityGamesFragment
         }
     }
 
@@ -387,13 +420,25 @@ public class MainActivity extends AppCompatActivity {
                 progressBar.setVisibility(View.GONE);
             }
 
-            // Sempre configurar o ViewPager, mesmo se a API falhar
-            // Isso garante que a aba de Jogos da Comunidade sempre apareça
-            if (result != null && !result.isEmpty()) {
-                apiData.putAll(result);
+            // Update the adapter's data instead of re-creating everything
+            if (isDestroyed() || isFinishing()) {
+                return;
             }
+
+            if (pagerAdapter != null) {
+                if (result != null && !result.isEmpty()) {
+                    // apiData.clear(); // MainActivity's apiData is no longer the direct source for adapter after init
+                    // apiData.putAll(result); // No longer directly populating MainActivity.apiData this way for adapter
+                    pagerAdapter.updateData(result);
+                } else {
+                    // Handle case where result is null or empty, perhaps clear existing tabs or show empty state
+                    pagerAdapter.updateData(new LinkedHashMap<>()); // Pass empty map to clear
+                }
+            }
+            // The TabLayoutMediator set up in onCreate should handle title updates via getPageTitle
+            // and tab recreation if count changes due to notifyDataSetChanged()
             
-            setupViewPagerAndTabs();
+            // Ensure UI elements are visible after data load attempt
             if (tabLayout != null) {
                 tabLayout.setVisibility(View.VISIBLE);
             }
