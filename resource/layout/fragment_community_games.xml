@@ -18,11 +18,11 @@
             app:queryHint="Procurar Jogos..." />
             <!-- Hint translated -->
 
-        <androidx.swiperefreshlayout.widget.SwipeRefreshLayout
-            android:id="@+id/swipe_refresh_layout_community_games"
             <!-- Added a more specific ID -->
-            android:layout_width="match_parent"
-            android:layout_height="match_parent">
+            <androidx.swiperefreshlayout.widget.SwipeRefreshLayout
+                android:id="@+id/swipe_refresh_layout_community_games"
+                android:layout_width="match_parent"
+                android:layout_height="match_parent">
 
             <androidx.recyclerview.widget.RecyclerView
                 android:id="@+id/recycler_view_community_games"
