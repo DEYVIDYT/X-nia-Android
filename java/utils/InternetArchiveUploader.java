@@ -55,9 +55,17 @@ public class InternetArchiveUploader {
 
             // Conditionally include MD5 in stringToSign
             String md5ForSigning = (precalculatedMd5 != null && !precalculatedMd5.isEmpty()) ? precalculatedMd5 : "";
+            String contentTypeHeader = "application/octet-stream";
+            // As suggested by the error message (PUT\n\n\n...),
+            // use an empty string for Content-Type in the signature string calculation
+            // when the actual content type is application/octet-stream.
+            String contentTypeForSigning = "";
+
+            // The Content-Type HTTP header itself will still be set using contentTypeHeader.
+            // This modification is strictly for the string components used to generate the signature.
             String stringToSign = "PUT\n" +
-                                  md5ForSigning + "\n" + // Use md5ForSigning (empty if precalculatedMd5 is null/empty)
-                                  "application/octet-stream\n" +
+                                  md5ForSigning + "\n" +
+                                  contentTypeForSigning + "\n" + // Use empty string here
                                   timestamp + "\n" +
                                   "/" + bucketName + "/" + objectKey;
             String signature = generateSignature(stringToSign, secretKey);
@@ -69,7 +77,7 @@ public class InternetArchiveUploader {
             connection.setDoOutput(true);
             connection.setRequestProperty("Authorization", "LOW " + accessKey + ":" + signature);
             connection.setRequestProperty("Date", timestamp);
-            connection.setRequestProperty("Content-Type", "application/octet-stream");
+            connection.setRequestProperty("Content-Type", contentTypeHeader);
             // Conditionally set Content-MD5 header
             if (precalculatedMd5 != null && !precalculatedMd5.isEmpty()) {
                 connection.setRequestProperty("Content-MD5", precalculatedMd5);
