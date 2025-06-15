@@ -30,6 +30,7 @@ import androidx.core.content.ContextCompat;
 import androidx.fragment.app.Fragment;
 import androidx.recyclerview.widget.LinearLayoutManager;
 import androidx.recyclerview.widget.RecyclerView;
+import androidx.appcompat.widget.SearchView; // Added
 
 import com.google.android.material.floatingactionbutton.FloatingActionButton;
 import com.google.android.material.textfield.TextInputEditText;
@@ -89,22 +90,49 @@ public class CommunityGamesFragment extends Fragment {
     public View onCreateView(@NonNull LayoutInflater inflater, @Nullable ViewGroup container, @Nullable Bundle savedInstanceState) {
         View view = inflater.inflate(R.layout.fragment_community_games, container, false);
         
+        // RecyclerView and FAB are initialized here
         recyclerView = view.findViewById(R.id.recycler_view_community_games);
         fabUpload = view.findViewById(R.id.fab_upload);
         
+        // Adapter and LayoutManager setup
         recyclerView.setLayoutManager(new LinearLayoutManager(getContext()));
         
         gamesList = new ArrayList<>();
-        adapter = new CommunityGamesAdapter(gamesList, getContext());
+        adapter = new CommunityGamesAdapter(gamesList, getContext()); // gamesList is initialized before this
         recyclerView.setAdapter(adapter);
         
+        // Executor and Repository initialization
         executor = Executors.newSingleThreadExecutor();
-        uploadRepository = new UploadRepository(getContext());
+        uploadRepository = new UploadRepository(getContext()); // Assuming this is still needed or used elsewhere
         
+        // Setup for FAB and initial data load
         setupFabClickListener();
-        loadCommunityGames();
+        loadCommunityGames(); // This will populate gamesList and communityGamesListFull in adapter via setGamesList
         
         return view;
+    }
+
+    @Override
+    public void onViewCreated(@NonNull View view, @Nullable Bundle savedInstanceState) {
+        super.onViewCreated(view, savedInstanceState);
+
+        SearchView searchView = view.findViewById(R.id.search_view_community_games);
+        searchView.setOnQueryTextListener(new SearchView.OnQueryTextListener() {
+            @Override
+            public boolean onQueryTextSubmit(String query) {
+                // Optional: Handle search query submission.
+                // Usually, filtering is live with onQueryTextChange.
+                return false;
+            }
+
+            @Override
+            public boolean onQueryTextChange(String newText) {
+                if (adapter != null) {
+                    adapter.getFilter().filter(newText);
+                }
+                return false;
+            }
+        });
     }
 
     private void setupFabClickListener() {
@@ -434,9 +462,12 @@ public class CommunityGamesFragment extends Fragment {
             
             if (getActivity() != null) {
                 getActivity().runOnUiThread(() -> {
-                    gamesList.clear();
-                    gamesList.addAll(newGamesList);
-                    adapter.notifyDataSetChanged();
+                    if (newGamesList != null) {
+                        java.util.Collections.reverse(newGamesList); // Reverse the list here
+                    }
+                    if (adapter != null) {
+                         adapter.setGamesList(newGamesList);
+                    }
                 });
             }
         } catch (JSONException e) {

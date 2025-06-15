@@ -10,6 +10,8 @@ import android.view.View;
 import android.view.ViewGroup;
 import android.widget.Button;
 import android.widget.TextView;
+import android.widget.Filter; // Added
+import android.widget.Filterable; // Added
 
 import androidx.annotation.NonNull;
 import androidx.recyclerview.widget.RecyclerView;
@@ -18,17 +20,29 @@ import com.winlator.Download.R;
 import com.winlator.Download.model.CommunityGame;
 // import com.winlator.Download.service.DownloadService; // Removed
 
+import java.util.ArrayList; // Added
 import java.util.List;
 
-public class CommunityGamesAdapter extends RecyclerView.Adapter<CommunityGamesAdapter.ViewHolder> {
+public class CommunityGamesAdapter extends RecyclerView.Adapter<CommunityGamesAdapter.ViewHolder> implements Filterable { // Implemented Filterable
 
-    private List<CommunityGame> gamesList;
+    private List<CommunityGame> communityGamesList; // Renamed for clarity, holds filtered list
+    private List<CommunityGame> communityGamesListFull; // For the original list
     private Context context;
 
-    public CommunityGamesAdapter(List<CommunityGame> gamesList, Context context) {
-        this.gamesList = gamesList;
+    public CommunityGamesAdapter(List<CommunityGame> communityGamesList, Context context) {
+        // When the adapter is created, the passed list is initially both full and filtered.
+        this.communityGamesList = new ArrayList<>(communityGamesList);
+        this.communityGamesListFull = new ArrayList<>(communityGamesList);
         this.context = context;
     }
+
+    // Method to update the list if needed from fragment, e.g., after fetching new data
+    public void setGamesList(List<CommunityGame> games) {
+        this.communityGamesList = new ArrayList<>(games);
+        this.communityGamesListFull = new ArrayList<>(games);
+        notifyDataSetChanged();
+    }
+
 
     @NonNull
     @Override
@@ -39,7 +53,7 @@ public class CommunityGamesAdapter extends RecyclerView.Adapter<CommunityGamesAd
 
     @Override
     public void onBindViewHolder(@NonNull ViewHolder holder, int position) {
-        CommunityGame game = gamesList.get(position);
+        CommunityGame game = communityGamesList.get(position); // Use filtered list
         
         holder.tvGameName.setText(game.getName());
         holder.tvGameSize.setText(game.getSize());
@@ -49,27 +63,55 @@ public class CommunityGamesAdapter extends RecyclerView.Adapter<CommunityGamesAd
             if (gameUrl != null && !gameUrl.isEmpty()) {
                 try {
                     Intent browserIntent = new Intent(Intent.ACTION_VIEW, Uri.parse(gameUrl));
-                    // Using holder.itemView.getContext() instead of the adapter's context field
-                    // to ensure it's the most relevant context for starting an activity from an item view.
                     holder.itemView.getContext().startActivity(browserIntent);
                     Log.d("CommunityGamesAdapter", "Opening URL in browser. Game: '" + game.getName() + "', URL: '" + gameUrl + "'");
                 } catch (Exception e) {
                     Log.e("CommunityGamesAdapter", "Could not open URL: " + gameUrl, e);
-                    // Optionally, show a Toast to the user
-                    // Toast.makeText(holder.itemView.getContext(), "Could not open link", Toast.LENGTH_SHORT).show();
                 }
             } else {
                 Log.w("CommunityGamesAdapter", "Game URL is null or empty for: " + game.getName());
-                // Optionally, show a Toast
-                // Toast.makeText(holder.itemView.getContext(), "Download link is missing", Toast.LENGTH_SHORT).show();
             }
         });
     }
 
     @Override
     public int getItemCount() {
-        return gamesList.size();
+        return communityGamesList.size(); // Use filtered list
     }
+
+    @Override
+    public Filter getFilter() {
+        return communityGamesFilter;
+    }
+
+    private Filter communityGamesFilter = new Filter() {
+        @Override
+        protected FilterResults performFiltering(CharSequence constraint) {
+            List<CommunityGame> filteredList = new ArrayList<>();
+            if (constraint == null || constraint.length() == 0) {
+                filteredList.addAll(communityGamesListFull);
+            } else {
+                String filterPattern = constraint.toString().toLowerCase().trim();
+                for (CommunityGame item : communityGamesListFull) {
+                    if (item.getName().toLowerCase().contains(filterPattern)) {
+                        filteredList.add(item);
+                    }
+                }
+            }
+            FilterResults results = new FilterResults();
+            results.values = filteredList;
+            return results;
+        }
+
+        @Override
+        protected void publishResults(CharSequence constraint, FilterResults results) {
+            communityGamesList.clear();
+            if (results.values != null) {
+                communityGamesList.addAll((List) results.values);
+            }
+            notifyDataSetChanged();
+        }
+    };
 
     public static class ViewHolder extends RecyclerView.ViewHolder {
         TextView tvGameName;
