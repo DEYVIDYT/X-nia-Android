@@ -2,8 +2,9 @@ package com.winlator.Download.adapter;
 
 import android.content.Context;
 import android.content.Intent;
+import android.net.Uri; // Added for Uri.parse
 import android.util.Log;
-import com.winlator.Download.DownloadManagerActivity;
+// import com.winlator.Download.DownloadManagerActivity; // Removed
 import android.view.LayoutInflater;
 import android.view.View;
 import android.view.ViewGroup;
@@ -15,7 +16,7 @@ import androidx.recyclerview.widget.RecyclerView;
 
 import com.winlator.Download.R;
 import com.winlator.Download.model.CommunityGame;
-import com.winlator.Download.service.DownloadService;
+// import com.winlator.Download.service.DownloadService; // Removed
 
 import java.util.List;
 
@@ -44,16 +45,24 @@ public class CommunityGamesAdapter extends RecyclerView.Adapter<CommunityGamesAd
         holder.tvGameSize.setText(game.getSize());
         
         holder.btnDownload.setOnClickListener(v -> {
-            // Iniciar download usando o DownloadService existente
-            // Iniciar download usando o DownloadService existente
-            Intent downloadIntent = new Intent(context, DownloadService.class);
-            downloadIntent.putExtra("url", game.getUrl());
-            downloadIntent.putExtra("filename", game.getName() + ".zip");
-            Log.d("CommunityGamesAdapter", "Attempting to start DownloadService. Game: '" + game.getName() + "', URL: '" + game.getUrl() + "', Target Filename: '" + (game.getName() + ".zip") + "'");
-            context.startForegroundService(downloadIntent);
-
-            Intent activityIntent = new Intent(context, DownloadManagerActivity.class);
-            context.startActivity(activityIntent);
+            String gameUrl = game.getUrl();
+            if (gameUrl != null && !gameUrl.isEmpty()) {
+                try {
+                    Intent browserIntent = new Intent(Intent.ACTION_VIEW, Uri.parse(gameUrl));
+                    // Using holder.itemView.getContext() instead of the adapter's context field
+                    // to ensure it's the most relevant context for starting an activity from an item view.
+                    holder.itemView.getContext().startActivity(browserIntent);
+                    Log.d("CommunityGamesAdapter", "Opening URL in browser. Game: '" + game.getName() + "', URL: '" + gameUrl + "'");
+                } catch (Exception e) {
+                    Log.e("CommunityGamesAdapter", "Could not open URL: " + gameUrl, e);
+                    // Optionally, show a Toast to the user
+                    // Toast.makeText(holder.itemView.getContext(), "Could not open link", Toast.LENGTH_SHORT).show();
+                }
+            } else {
+                Log.w("CommunityGamesAdapter", "Game URL is null or empty for: " + game.getName());
+                // Optionally, show a Toast
+                // Toast.makeText(holder.itemView.getContext(), "Download link is missing", Toast.LENGTH_SHORT).show();
+            }
         });
     }
 
