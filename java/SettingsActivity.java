@@ -10,7 +10,7 @@ import com.google.android.material.color.DynamicColors;
 
 public class SettingsActivity extends AppCompatActivity {
 
-    private Button btnConfigureUploadApi;
+    // private Button btnConfigureUploadApi; // Removed
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -23,22 +23,22 @@ public class SettingsActivity extends AppCompatActivity {
             getSupportActionBar().setDisplayHomeAsUpEnabled(true);
         }
 
-        initViews();
-        setupClickListeners();
+        // initViews(); // Removed
+        // setupClickListeners(); // Removed
     }
 
-    private void initViews() {
-        btnConfigureUploadApi = findViewById(R.id.btn_configure_upload_api);
-    }
+    // private void initViews() { // Removed
+        // btnConfigureUploadApi = findViewById(R.id.btn_configure_upload_api); // Removed
+    // } // Removed
 
-    private void setupClickListeners() {
-        if (btnConfigureUploadApi != null) {
-            btnConfigureUploadApi.setOnClickListener(v -> {
-                Intent intent = new Intent(SettingsActivity.this, UploadApiSettingsHostActivity.class);
-                startActivity(intent);
-            });
-        }
-    }
+    // private void setupClickListeners() { // Removed
+        // if (btnConfigureUploadApi != null) { // Removed
+            // btnConfigureUploadApi.setOnClickListener(v -> { // Removed
+                // Intent intent = new Intent(SettingsActivity.this, UploadApiSettingsHostActivity.class); // Removed
+                // startActivity(intent); // Removed
+            // }); // Removed
+        // } // Removed
+    // } // Removed
 
     @Override
     public boolean onSupportNavigateUp() {

@@ -32,20 +32,8 @@
             android:textColor="?attr/colorOnSurfaceVariant"
             android:layout_marginBottom="16dp" />
 
-        <Button
-            android:id="@+id/btn_configure_upload_api"
-            style="@style/Widget.Material3.Button.TextButton"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:text="Configurar Credenciais do Internet Archive"
-            android:layout_marginTop="8dp"
-            android:layout_marginBottom="24dp"
-            android:gravity="start|center_vertical"
-            android:paddingStart="16dp"
-            android:paddingEnd="16dp"
-            android:textAppearance="?attr/textAppearanceListItem"/>
-
         <!-- Removed upload game section -->
+        <!-- The Button R.id.btn_configure_upload_api was removed as UploadApiSettingsHostActivity is deleted -->
 
     </LinearLayout>
 

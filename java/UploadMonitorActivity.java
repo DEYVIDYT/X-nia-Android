@@ -71,12 +71,11 @@ public class UploadMonitorActivity extends AppCompatActivity {
                 serviceIntent.putExtra("upload_id", upload.getId());
                 serviceIntent.putExtra("game_name", upload.getGameName());
                 serviceIntent.putExtra("file_name", upload.getFileName());
-                serviceIntent.putExtra("file_size", upload.getFileSize());
-                serviceIntent.putExtra("access_key", upload.getAccessKey());
-                serviceIntent.putExtra("secret_key", upload.getSecretKey());
-                serviceIntent.putExtra("item_identifier", upload.getItemIdentifier());
+                serviceIntent.putExtra("file_size", upload.getFileSize()); // This is game_size_bytes for UploadService
+                // Removed access_key, secret_key, item_identifier
                 serviceIntent.putExtra("file_uri", upload.getFileUri());
-                serviceIntent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
+                serviceIntent.putExtra("game_link", upload.getGameLink()); // Added game_link
+                // serviceIntent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION); // May not be needed if file_uri is just a string
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
                     ContextCompat.startForegroundService(this, serviceIntent);
                 } else {
@@ -113,36 +112,56 @@ public class UploadMonitorActivity extends AppCompatActivity {
                     switch (action) {
                         case UploadService.ACTION_UPLOAD_STARTED:
                             if (currentUpload == null) {
-                                // This should ideally not happen if started from DB, but for new uploads
-                                UploadStatus newUpload = new UploadStatus(uploadId, gameName, fileName, fileSize, UploadStatus.Status.UPLOADING, progress, null, System.currentTimeMillis(), uploadedBytes, intent.getStringExtra("access_key"), intent.getStringExtra("secret_key"), intent.getStringExtra("item_identifier"), intent.getStringExtra("file_uri"));
+                                // This case handles when a new upload is started directly by UploadService
+                                // and UploadMonitorActivity is opened later or was not aware of it.
+                                // It needs to correctly create an UploadStatus object based on what UploadService broadcasts.
+                                String fileUriStr = intent.getStringExtra("file_uri");
+                                String gameLinkStr = intent.getStringExtra("game_link");
+                                long startTime = intent.getLongExtra("start_time", System.currentTimeMillis()); // Assuming UploadService might broadcast this
+
+                                // Using the correct UploadStatus constructor
+                                // public UploadStatus(int id, String gameName, String fileName, long fileSize, Status status, int progress, String errorMessage, long startTime, long uploadedBytes, String fileUri, String gameLink)
+                                // For a new upload just started, error is null, status is UPLOADING.
+                                UploadStatus newUpload = new UploadStatus(uploadId, gameName, fileName, fileSize,
+                                        UploadStatus.Status.UPLOADING, progress, null, startTime,
+                                        uploadedBytes, fileUriStr, gameLinkStr);
                                 uploadsList.add(0, newUpload);
                                 adapter.notifyItemInserted(0);
                                 recyclerView.scrollToPosition(0);
-                                Log.d("UploadMonitorActivity", "Upload STARTED (new): id=" + uploadId + ", game=" + gameName);
+                                Log.d("UploadMonitorActivity", "Upload STARTED (new from broadcast): id=" + uploadId + ", game=" + gameName);
                             } else {
+                                // This is for an existing upload being updated by a broadcast (e.g. resumed)
                                 currentUpload.setStatus(UploadStatus.Status.UPLOADING);
                                 currentUpload.setProgress(progress);
                                 currentUpload.setUploadedBytes(uploadedBytes);
+                                // If UploadService broadcasts new fileUri or gameLink on resume, update them here too.
+                                // currentUpload.setFileUri(intent.getStringExtra("file_uri"));
+                                // currentUpload.setGameLink(intent.getStringExtra("game_link"));
                                 adapter.notifyItemChanged(uploadsList.indexOf(currentUpload));
-                                Log.d("UploadMonitorActivity", "Upload STARTED (resumed): id=" + uploadId + ", game=" + gameName);
+                                Log.d("UploadMonitorActivity", "Upload STARTED (update from broadcast): id=" + uploadId + ", game=" + gameName);
                             }
                             break;
                         case UploadService.ACTION_UPLOAD_PROGRESS:
                             if (currentUpload != null) {
                                 currentUpload.setProgress(progress);
                                 currentUpload.setUploadedBytes(uploadedBytes);
-                                currentUpload.setStatus(UploadStatus.Status.UPLOADING);
+                                currentUpload.setStatus(UploadStatus.Status.UPLOADING); // Ensure status is uploading
                                 adapter.notifyItemChanged(uploadsList.indexOf(currentUpload));
                                 Log.d("UploadMonitorActivity", "Upload PROGRESS: id=" + uploadId + ", game=" + gameName + ", progress=" + progress + ", uploadedBytes=" + uploadedBytes);
+                            } else {
+                                Log.w("UploadMonitorActivity", "PROGRESS event for unknown uploadId: " + uploadId);
+                                // Optionally, reload all uploads if an unknown progress event occurs
                             }
                             break;
                         case UploadService.ACTION_UPLOAD_COMPLETED:
                             if (currentUpload != null) {
                                 currentUpload.setStatus(UploadStatus.Status.COMPLETED);
                                 currentUpload.setProgress(100);
-                                currentUpload.setUploadedBytes(fileSize);
+                                currentUpload.setUploadedBytes(fileSize); // Ensure this uses the correct total size
                                 adapter.notifyItemChanged(uploadsList.indexOf(currentUpload));
                                 Log.d("UploadMonitorActivity", "Upload COMPLETED: id=" + uploadId + ", game=" + gameName);
+                            } else {
+                                Log.w("UploadMonitorActivity", "COMPLETED event for unknown uploadId: " + uploadId);
                             }
                             break;
                         case UploadService.ACTION_UPLOAD_ERROR:
@@ -151,6 +170,8 @@ public class UploadMonitorActivity extends AppCompatActivity {
                                 currentUpload.setErrorMessage(error);
                                 adapter.notifyItemChanged(uploadsList.indexOf(currentUpload));
                                 Log.d("UploadMonitorActivity", "Upload ERROR: id=" + uploadId + ", game=" + gameName + ", error=" + error);
+                            } else {
+                                Log.w("UploadMonitorActivity", "ERROR event for unknown uploadId: " + uploadId);
                             }
                             break;
                     }
@@ -163,7 +184,12 @@ public class UploadMonitorActivity extends AppCompatActivity {
         filter.addAction(UploadService.ACTION_UPLOAD_PROGRESS);
         filter.addAction(UploadService.ACTION_UPLOAD_COMPLETED);
         filter.addAction(UploadService.ACTION_UPLOAD_ERROR);
-        registerReceiver(uploadReceiver, filter);
+
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            registerReceiver(uploadReceiver, filter, Context.RECEIVER_EXPORTED);
+        } else {
+            registerReceiver(uploadReceiver, filter);
+        }
     }
 
     private UploadStatus findUploadById(int id) {

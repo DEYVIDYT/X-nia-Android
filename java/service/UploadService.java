@@ -116,27 +116,32 @@ public class UploadService extends Service {
                     uploadStatus = uploadRepository.getUploadById(uploadId);
                     if (uploadStatus == null) {
                         Log.e("UploadService", "UploadStatus com ID " + uploadId + " não encontrado. Iniciando novo upload.");
-                        // Using the updated UploadStatus constructor
                         uploadStatus = new UploadStatus(gameName, fileName, gameSizeBytes, fileUriString, gameLink);
+                        // Set id after insertion for new UploadStatus object
                         long newId = uploadRepository.insertUpload(uploadStatus);
                         uploadStatus.setId((int) newId);
                     } else {
                         if (uploadStatus.getStatus() == UploadStatus.Status.PAUSED || uploadStatus.getStatus() == UploadStatus.Status.ERROR) {
-                            uploadStatus.setStatus(UploadStatus.Status.UPLOADING); // Reset status
-                            uploadStatus.setFileSize(gameSizeBytes);
-                            uploadStatus.setGameLink(gameLink); // Update game link if retrying
-                            uploadStatus.setFileUri(fileUriString); // Update file URI if applicable
+                            uploadStatus.setStatus(UploadStatus.Status.UPLOADING);
+                            uploadStatus.setFileSize(gameSizeBytes); // User might have changed this for a retry
+                            uploadStatus.setGameLink(gameLink);
+                            uploadStatus.setFileUri(fileUriString);
+                            // Reset progress for resume, or let UploadService manage it based on actual uploaded bytes if resumable links were a thing
+                            uploadStatus.setProgress(0);
+                            uploadStatus.setUploadedBytes(0);
                             uploadRepository.updateUpload(uploadStatus);
                         }
+                        // If not paused or error, it might be an active upload the service is re-attaching to.
+                        // Or if the user tries to "start" an already completed/processing one, this logic might need refinement.
+                        // For now, we assume if it's an existing ID, we primarily care about PAUSED/ERROR states for restart.
                     }
                 } else {
-                    // New upload:
                     uploadStatus = new UploadStatus(gameName, fileName, gameSizeBytes, fileUriString, gameLink);
                     long newId = uploadRepository.insertUpload(uploadStatus);
                     uploadStatus.setId((int) newId);
                 }
 
-                sendUploadBroadcast(ACTION_UPLOAD_STARTED, uploadStatus.getId(), gameName, fileName, gameSizeBytes, 0, null, 0);
+                sendUploadBroadcast(ACTION_UPLOAD_STARTED, uploadStatus, null);
                 uploadGame(uploadStatus);
             });
         }
@@ -159,22 +164,20 @@ public class UploadService extends Service {
 
     private void uploadGame(UploadStatus uploadStatus) {
         updateNotification("Validando link para " + uploadStatus.getGameName() + "...", 10);
-        sendUploadBroadcast(ACTION_UPLOAD_PROGRESS, uploadStatus.getId(), uploadStatus.getGameName(), uploadStatus.getFileName(), uploadStatus.getFileSize(), 10, null, 0);
+        uploadStatus.setProgress(10); // Keep status object updated
+        sendUploadBroadcast(ACTION_UPLOAD_PROGRESS, uploadStatus, null);
 
         if (!isValidGameLink(uploadStatus.getGameLink())) {
             String errorMsg = "Link do jogo inválido ou não permitido: " + uploadStatus.getGameLink();
             Log.e("UploadService", errorMsg);
-            // No need to call showErrorNotification here as handleError will do it.
-            handleError(uploadStatus, errorMsg);
-            stopSelfIfNeeded(); // Ensure service stops if validation fails early.
+            handleError(uploadStatus, errorMsg); // handleError will update status and call sendUploadBroadcast
+            stopSelfIfNeeded();
             return;
         }
 
-        // gameLink is already part of uploadStatus and persisted by insertUpload or updateUpload.
-        // No need to set it again here unless it was modified, which it isn't in this flow.
-
         updateNotification("Registrando " + uploadStatus.getGameName() + " com o servidor...", 50);
-        sendUploadBroadcast(ACTION_UPLOAD_PROGRESS, uploadStatus.getId(), uploadStatus.getGameName(), uploadStatus.getFileName(), uploadStatus.getFileSize(), 50, null, 0);
+        uploadStatus.setProgress(50); // Keep status object updated
+        sendUploadBroadcast(ACTION_UPLOAD_PROGRESS, uploadStatus, null);
 
         sendToPhpApi(uploadStatus);
     }
@@ -219,8 +222,9 @@ public class UploadService extends Service {
                     showSuccessNotification(successMsg);
                     uploadStatus.setStatus(UploadStatus.Status.COMPLETED);
                     uploadStatus.setProgress(100);
-                    uploadRepository.updateUpload(uploadStatus); // gameLink is already in uploadStatus
-                    sendUploadBroadcast(ACTION_UPLOAD_COMPLETED, uploadStatus.getId(), uploadStatus.getGameName(), uploadStatus.getFileName(), uploadStatus.getFileSize(), 100, null, uploadStatus.getFileSize());
+                    uploadStatus.setUploadedBytes(uploadStatus.getFileSize()); // Mark as fully "uploaded"
+                    uploadRepository.updateUpload(uploadStatus);
+                    sendUploadBroadcast(ACTION_UPLOAD_COMPLETED, uploadStatus, null);
                 } else {
                     String error = "Erro da API ao registrar " + uploadStatus.getGameName() + ": " + responseJson.getString("message");
                     handleError(uploadStatus, error);
@@ -242,27 +246,30 @@ public class UploadService extends Service {
         showErrorNotification(errorMessage);
         uploadStatus.setStatus(UploadStatus.Status.ERROR);
         uploadStatus.setErrorMessage(errorMessage);
-        // gameLink is already part of uploadStatus and should have been persisted
         uploadRepository.updateUpload(uploadStatus);
-        sendUploadBroadcast(ACTION_UPLOAD_ERROR, uploadStatus.getId(), uploadStatus.getGameName(), uploadStatus.getFileName(), uploadStatus.getFileSize(), uploadStatus.getProgress(), errorMessage, uploadStatus.getUploadedBytes());
+        sendUploadBroadcast(ACTION_UPLOAD_ERROR, uploadStatus, errorMessage);
     }
 
-
-    private void sendUploadBroadcast(String action, int id, String gameName, String fileName, long fileSize, int progress, String error, long uploadedBytes) {
+    // Updated sendUploadBroadcast to take UploadStatus object
+    private void sendUploadBroadcast(String action, UploadStatus status, @Nullable String errorMessage) {
         Intent broadcast = new Intent(action);
-        broadcast.putExtra("upload_id", id);
-        broadcast.putExtra("game_name", gameName);
-        // fileName might be redundant if gameName is used, or could be derived from gameLink if necessary
-        broadcast.putExtra("file_name", fileName != null ? fileName : gameName);
-        broadcast.putExtra("file_size", fileSize); // This is game_size_bytes
-        broadcast.putExtra("progress", progress);
-        // uploaded_bytes is less relevant now, but can be 0 for not started, fileSize for "completed" interaction with API
-        broadcast.putExtra("uploaded_bytes", uploadedBytes);
-        if (error != null) {
-            broadcast.putExtra("error", error);
+        broadcast.putExtra("upload_id", status.getId());
+        broadcast.putExtra("game_name", status.getGameName());
+        broadcast.putExtra("file_name", status.getFileName() != null ? status.getFileName() : status.getGameName());
+        broadcast.putExtra("file_size", status.getFileSize());
+        broadcast.putExtra("progress", status.getProgress());
+        broadcast.putExtra("uploaded_bytes", status.getUploadedBytes());
+        broadcast.putExtra("file_uri", status.getFileUri());
+        broadcast.putExtra("game_link", status.getGameLink());
+        broadcast.putExtra("start_time", status.getStartTime());
+        // No longer broadcasting status string, receiver infers from action or uses persisted one.
+        // For error, it's passed explicitly.
+
+        if (errorMessage != null) {
+            broadcast.putExtra("error", errorMessage);
         }
 
-        Log.d("UploadService", "Sending broadcast: " + action + " for " + gameName + " (ID: " + id + ") Prog: " + progress);
+        Log.d("UploadService", "Sending broadcast: " + action + " for " + status.getGameName() + " (ID: " + status.getId() + ") Prog: " + status.getProgress());
         sendBroadcast(broadcast);
     }
 

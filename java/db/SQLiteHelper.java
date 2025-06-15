@@ -8,7 +8,7 @@ import android.util.Log;
 public class SQLiteHelper extends SQLiteOpenHelper {
     private static final String TAG = "SQLiteHelper";
 
-    public static final int DATABASE_VERSION = 3; // Increment database version
+    public static final int DATABASE_VERSION = 4; // Incremented database version
     public static final String DATABASE_NAME = "WinlatorDownloads.db";
 
     private static final String SQL_CREATE_UPLOADS_ENTRIES =
@@ -22,10 +22,11 @@ public class SQLiteHelper extends SQLiteOpenHelper {
                     UploadContract.UploadEntry.COLUMN_NAME_ERROR_MESSAGE + " TEXT," +
                     UploadContract.UploadEntry.COLUMN_NAME_START_TIME + " INTEGER," +
                     UploadContract.UploadEntry.COLUMN_NAME_UPLOADED_BYTES + " INTEGER," +
-                    UploadContract.UploadEntry.COLUMN_NAME_ACCESS_KEY + " TEXT," +
-                    UploadContract.UploadEntry.COLUMN_NAME_SECRET_KEY + " TEXT," +
-                    UploadContract.UploadEntry.COLUMN_NAME_ITEM_IDENTIFIER + " TEXT," +
-                    UploadContract.UploadEntry.COLUMN_NAME_FILE_URI + " TEXT)";
+                    UploadContract.UploadEntry.COLUMN_NAME_FILE_URI + " TEXT," +
+                    UploadContract.UploadEntry.COLUMN_NAME_GAME_LINK + " TEXT)";
+                    // Removed UploadContract.UploadEntry.COLUMN_NAME_ACCESS_KEY,
+                    // UploadContract.UploadEntry.COLUMN_NAME_SECRET_KEY,
+                    // UploadContract.UploadEntry.COLUMN_NAME_ITEM_IDENTIFIER
 
     private static final String SQL_DELETE_UPLOADS_ENTRIES =
             "DROP TABLE IF EXISTS " + UploadContract.UploadEntry.TABLE_NAME;
