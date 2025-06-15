@@ -16,6 +16,7 @@ import android.widget.Toast;
 import androidx.appcompat.app.ActionBar;
 import androidx.appcompat.app.AppCompatActivity;
 
+import com.google.android.material.color.DynamicColors; // Added
 import com.google.android.material.textfield.TextInputEditText; // For direct use if preferred
 
 public class LinkCryptorActivity extends AppCompatActivity {
@@ -31,6 +32,7 @@ public class LinkCryptorActivity extends AppCompatActivity {
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
+        DynamicColors.applyToActivityIfAvailable(this); // Added
         setContentView(R.layout.activity_link_cryptor);
 
         ActionBar actionBar = getSupportActionBar();

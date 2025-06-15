@@ -35,8 +35,9 @@
             android:layout_height="wrap_content"
             android:text="URL para adicionar/atualizar jogos:"
             android:textAppearance="?attr/textAppearanceBodyMedium"
-            android:layout_marginStart="0dp"
-            android:layout_marginEnd="0dp"/>
+            android:layout_marginTop="8dp"
+            android:layout_marginStart="16dp"
+            android:layout_marginEnd="16dp"/>
 
         <TextView
             android:layout_width="match_parent"
@@ -45,27 +46,46 @@
             android:textAppearance="?attr/textAppearanceBodySmall"
             android:textColor="?attr/colorPrimary"
             android:textIsSelectable="true"
-            android:layout_marginStart="0dp"
-            android:layout_marginEnd="0dp"
+            android:layout_marginStart="16dp"
+            android:layout_marginEnd="16dp"
             android:layout_marginBottom="16dp"/>
 
         <TextView
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:text="URL para listar jogos da comunidade (exemplo):"
+            android:text="URL para listar jogos da comunidade:"
             android:textAppearance="?attr/textAppearanceBodyMedium"
-            android:layout_marginStart="0dp"
-            android:layout_marginEnd="0dp"/>
+            android:layout_marginStart="16dp"
+            android:layout_marginEnd="16dp"/>
 
         <TextView
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:text="https://yourdomain.com/api/list_games.php"
+            android:text="https://ldgames.x10.mx/list_games.php"
             android:textAppearance="?attr/textAppearanceBodySmall"
             android:textColor="?attr/colorPrimary"
             android:textIsSelectable="true"
-            android:layout_marginStart="0dp"
-            android:layout_marginEnd="0dp"
+            android:layout_marginStart="16dp"
+            android:layout_marginEnd="16dp"
+            android:layout_marginBottom="16dp"/>
+
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="URL para obter versões do Winlator:"
+            android:textAppearance="?attr/textAppearanceBodyMedium"
+            android:layout_marginStart="16dp"
+            android:layout_marginEnd="16dp"/>
+
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="https://raw.githubusercontent.com/DEYVIDYT/WINLATOR-DOWNLOAD/refs/heads/main/WINLATOR.json"
+            android:textAppearance="?attr/textAppearanceBodySmall"
+            android:textColor="?attr/colorPrimary"
+            android:textIsSelectable="true"
+            android:layout_marginStart="16dp"
+            android:layout_marginEnd="16dp"
             android:layout_marginBottom="4dp"/>
 
         <Button
