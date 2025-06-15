@@ -38,4 +38,8 @@
     <string name="action_delete">Excluir</string>
     <string name="action_select_all">Selecionar Tudo</string>
 
+    <string-array name="size_units_array">
+        <item>MB</item>
+        <item>GB</item>
+    </string-array>
 </resources>
