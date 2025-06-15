@@ -11,6 +11,7 @@ import com.google.android.material.color.DynamicColors;
 public class SettingsActivity extends AppCompatActivity {
 
     // private Button btnConfigureUploadApi; // Removed
+    private Button btnLinkCryptorTool;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -23,22 +24,29 @@ public class SettingsActivity extends AppCompatActivity {
             getSupportActionBar().setDisplayHomeAsUpEnabled(true);
         }
 
-        // initViews(); // Removed
-        // setupClickListeners(); // Removed
+        initViews();
+        setupClickListeners();
     }
 
-    // private void initViews() { // Removed
-        // btnConfigureUploadApi = findViewById(R.id.btn_configure_upload_api); // Removed
-    // } // Removed
+    private void initViews() {
+        // btnConfigureUploadApi = findViewById(R.id.btn_configure_upload_api); // Remains Removed
+        btnLinkCryptorTool = findViewById(R.id.btn_link_cryptor_tool);
+    }
 
-    // private void setupClickListeners() { // Removed
-        // if (btnConfigureUploadApi != null) { // Removed
-            // btnConfigureUploadApi.setOnClickListener(v -> { // Removed
-                // Intent intent = new Intent(SettingsActivity.this, UploadApiSettingsHostActivity.class); // Removed
-                // startActivity(intent); // Removed
-            // }); // Removed
-        // } // Removed
-    // } // Removed
+    private void setupClickListeners() {
+        // if (btnConfigureUploadApi != null) { // Remains Removed
+            // btnConfigureUploadApi.setOnClickListener(v -> { // Remains Removed
+                // Intent intent = new Intent(SettingsActivity.this, UploadApiSettingsHostActivity.class); // Remains Removed
+                // startActivity(intent); // Remains Removed
+            // }); // Remains Removed
+        // } // Remains Removed
+        if (btnLinkCryptorTool != null) {
+            btnLinkCryptorTool.setOnClickListener(v -> {
+                Intent intent = new Intent(SettingsActivity.this, LinkCryptorActivity.class);
+                startActivity(intent);
+            });
+        }
+    }
 
     @Override
     public boolean onSupportNavigateUp() {
