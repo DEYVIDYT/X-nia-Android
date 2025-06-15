@@ -444,17 +444,17 @@ public class MainActivity extends AppCompatActivity {
 
             // Detach and re-attach TabLayoutMediator to ensure tabs are rebuilt
             if (tabLayout != null && viewPager != null && pagerAdapter != null) {
-                if (this.tabLayoutMediator != null) {
-                    this.tabLayoutMediator.detach();
+                if (MainActivity.this.tabLayoutMediator != null) { // Qualified with MainActivity.this
+                    MainActivity.this.tabLayoutMediator.detach(); // Qualified
                 }
-                this.tabLayoutMediator = new TabLayoutMediator(tabLayout, viewPager,
+                MainActivity.this.tabLayoutMediator = new TabLayoutMediator(tabLayout, viewPager, // Qualified
                     (tab, position) -> {
                         if (pagerAdapter != null) {
                             tab.setText(pagerAdapter.getPageTitle(position));
                         }
                     }
                 );
-                this.tabLayoutMediator.attach();
+                MainActivity.this.tabLayoutMediator.attach(); // Qualified
             }
             
             // Ensure UI elements are visible after data load attempt
