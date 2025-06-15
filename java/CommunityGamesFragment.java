@@ -61,19 +61,27 @@ public class CommunityGamesFragment extends Fragment {
     private List<CommunityGame> gamesList;
     private ExecutorService executor;
     private FloatingActionButton fabUpload;
-    private UploadRepository uploadRepository; // Keep if needed for other operations, or remove if only for upload
+    private UploadRepository uploadRepository;
     
     // Dialog variables - updated
-    private EditText etDialogGameName; // For game name
+    private EditText etDialogGameName;
     private TextInputEditText etDialogGameLink;
     private SeekBar sbDialogGameSize;
     private TextView tvDialogSelectedSize;
     private TextInputEditText etDialogManualGameSize;
-    private Spinner spinnerDialogSizeUnit; // Added
+    private Spinner spinnerDialogSizeUnit;
     private Button btnDialogUpload;
-    private boolean isSeekBarChanging = false;
-    private boolean isEditTextChanging = false; // To prevent listener loops
-    private boolean isSpinnerChanging = false; // To prevent listener loops
+
+    // Flags to prevent listener loops
+    private boolean isUpdatingFromSeekBar = false;
+    private boolean isUpdatingFromEditText = false;
+    private boolean isUpdatingFromSpinner = false;
+
+    // Constants for size units and SeekBar limits
+    private static final int MAX_MB_SEEKBAR = 1024; // e.g. up to 1GB in MB mode for finer control
+    private static final int MAX_GB_SEEKBAR = 100;  // e.g. up to 100GB in GB mode
+    private static final int GB_SPINNER_POSITION = 1;
+    private static final int MB_SPINNER_POSITION = 0;
 
 
     @Nullable
@@ -133,11 +141,17 @@ public class CommunityGamesFragment extends Fragment {
         btnDialogUpload = dialogView.findViewById(R.id.btn_dialog_upload);
 
         // Initialize UI states
-        tvDialogSelectedSize.setText(sbDialogGameSize.getProgress() + " GB");
-        updateUploadButtonState(); // Initial state
-        etDialogManualGameSize.setText("0"); // Initialize with 0
-        spinnerDialogSizeUnit.setSelection(1); // Default to GB (index 1, MB is 0)
-        tvDialogSelectedSize.setText("0 GB"); // Initial display for SeekBar
+        isUpdatingFromSeekBar = false; // Reset flags
+        isUpdatingFromEditText = false;
+        isUpdatingFromSpinner = false;
+
+        spinnerDialogSizeUnit.setSelection(GB_SPINNER_POSITION); // Default to GB
+        sbDialogGameSize.setMax(MAX_GB_SEEKBAR);
+        etDialogManualGameSize.setText("0");
+        sbDialogGameSize.setProgress(0);
+        updateSelectedSizeTextView(0, "GB"); // Initial display
+        updateUploadButtonState();
+
 
         TextWatcher formValidationWatcher = new TextWatcher() {
             @Override public void beforeTextChanged(CharSequence s, int start, int count, int after) {}
@@ -151,14 +165,15 @@ public class CommunityGamesFragment extends Fragment {
         sbDialogGameSize.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener() {
             @Override
             public void onProgressChanged(SeekBar seekBar, int progress, boolean fromUser) {
-                if (fromUser) {
-                    isSeekBarChanging = true;
-                    tvDialogSelectedSize.setText(progress + " GB");
-                    etDialogManualGameSize.setText(String.valueOf(progress));
-                    spinnerDialogSizeUnit.setSelection(1); // Set to GB
-                    updateUploadButtonState();
-                    isSeekBarChanging = false;
-                }
+                if (!fromUser || isUpdatingFromEditText || isUpdatingFromSpinner) return;
+
+                isUpdatingFromSeekBar = true;
+                String currentUnit = spinnerDialogSizeUnit.getSelectedItem().toString();
+                etDialogManualGameSize.setText(String.valueOf(progress));
+                // No need to change spinner selection here, SeekBar always reflects the selected unit's scale
+                updateSelectedSizeTextView(progress, currentUnit);
+                updateUploadButtonState();
+                isUpdatingFromSeekBar = false;
             }
             @Override public void onStartTrackingTouch(SeekBar seekBar) { }
             @Override public void onStopTrackingTouch(SeekBar seekBar) { }
@@ -168,22 +183,58 @@ public class CommunityGamesFragment extends Fragment {
             @Override public void beforeTextChanged(CharSequence s, int start, int count, int after) {}
             @Override public void onTextChanged(CharSequence s, int start, int before, int count) {}
             @Override public void afterTextChanged(Editable s) {
-                if (isSeekBarChanging || isSpinnerChanging) return;
-                isEditTextChanging = true;
-                updateSeekBarFromManualInput();
+                if (isUpdatingFromSeekBar || isUpdatingFromSpinner) return;
+
+                isUpdatingFromEditText = true;
+                String valueStr = s.toString().trim();
+                double numericValue = 0;
+                if (isValidNumber(valueStr)) {
+                    numericValue = Double.parseDouble(valueStr);
+                } else if (!valueStr.isEmpty()){ // if not empty and not valid, show error indication
+                     etDialogManualGameSize.setError("Número inválido"); // Basic error
+                }
+
+
+                String currentUnit = spinnerDialogSizeUnit.getSelectedItem().toString();
+                int maxSeekBar = "GB".equals(currentUnit) ? MAX_GB_SEEKBAR : MAX_MB_SEEKBAR;
+                int progress = (int) Math.round(numericValue);
+
+                sbDialogGameSize.setProgress(Math.min(maxSeekBar, Math.max(0,progress)));
+                updateSelectedSizeTextView(numericValue, currentUnit); // Display what user typed
                 updateUploadButtonState();
-                isEditTextChanging = false;
+                isUpdatingFromEditText = false;
             }
         });
 
         spinnerDialogSizeUnit.setOnItemSelectedListener(new AdapterView.OnItemSelectedListener() {
             @Override
             public void onItemSelected(AdapterView<?> parent, View view, int position, long id) {
-                if (isSeekBarChanging || isEditTextChanging) return;
-                isSpinnerChanging = true;
-                updateSeekBarFromManualInput();
+                if (isUpdatingFromSeekBar || isUpdatingFromEditText) return;
+
+                isUpdatingFromSpinner = true;
+                String selectedUnit = parent.getItemAtPosition(position).toString();
+                double currentValue = 0;
+                String currentTextValue = etDialogManualGameSize.getText().toString().trim();
+                if (isValidNumber(currentTextValue)) {
+                    currentValue = Double.parseDouble(currentTextValue);
+                }
+
+                if ("MB".equals(selectedUnit)) {
+                    sbDialogGameSize.setMax(MAX_MB_SEEKBAR);
+                    // Value in EditText now refers to MB. If it was GB, it should be converted.
+                    // For simplicity, assume user changes unit for current number.
+                    int progressMB = Math.min(MAX_MB_SEEKBAR, (int) Math.round(currentValue));
+                    sbDialogGameSize.setProgress(progressMB);
+                    updateSelectedSizeTextView(currentValue, "MB");
+                } else { // GB
+                    sbDialogGameSize.setMax(MAX_GB_SEEKBAR);
+                    // Value in EditText now refers to GB.
+                    int progressGB = Math.min(MAX_GB_SEEKBAR, (int) Math.round(currentValue));
+                    sbDialogGameSize.setProgress(progressGB);
+                    updateSelectedSizeTextView(currentValue, "GB");
+                }
                 updateUploadButtonState();
-                isSpinnerChanging = false;
+                isUpdatingFromSpinner = false;
             }
             @Override public void onNothingSelected(AdapterView<?> parent) {}
         });
@@ -258,37 +309,17 @@ public class CommunityGamesFragment extends Fragment {
 
     // onActivityResult and getFileInfo removed as file selection is gone.
 
-    // private long parseSizeStringToBytes(String sizeStr) { // Method Removed
-    //     if (sizeStr == null || sizeStr.trim().isEmpty()) {
-    //         return 0;
-    //     }
-    //     sizeStr = sizeStr.toUpperCase().trim();
-    //     long multiplier = 1; // Default to bytes if no unit
-    //     try {
-    //         if (sizeStr.endsWith("GB")) {
-    //             multiplier = 1024L * 1024L * 1024L;
-    //             sizeStr = sizeStr.substring(0, sizeStr.length() - 2).trim();
-    //         } else if (sizeStr.endsWith("MB")) {
-    //             multiplier = 1024L * 1024L;
-    //             sizeStr = sizeStr.substring(0, sizeStr.length() - 2).trim();
-    //         } else if (sizeStr.endsWith("KB")) {
-    //             multiplier = 1024L;
-    //             sizeStr = sizeStr.substring(0, sizeStr.length() - 2).trim();
-    //         } else if (sizeStr.endsWith("B")) { // Explicit bytes
-    //              sizeStr = sizeStr.substring(0, sizeStr.length() - 1).trim();
-    //         }
-    //         // Remove any non-numeric characters that might remain after unit stripping (e.g. spaces)
-    //         // And handle comma as decimal separator for some locales
-    //         sizeStr = sizeStr.replaceAll("[^\\d.,]", "").replace(',', '.');
-    //         if (sizeStr.isEmpty()) return 0;
-    //
-    //         double value = Double.parseDouble(sizeStr);
-    //         return (long) (value * multiplier);
-    //     } catch (NumberFormatException e) {
-    //         Log.e("CommunityGamesFragment", "Error parsing size string: " + sizeStr, e);
-    //         return 0; // Invalid format
-    //     }
-    // }
+    // Method to update the selected size TextView (tvDialogSelectedSize)
+    private void updateSelectedSizeTextView(double value, String unit) {
+        if (tvDialogSelectedSize == null) return;
+        if ("MB".equalsIgnoreCase(unit)) {
+            // For MB, typically whole numbers are expected by users in this context
+            tvDialogSelectedSize.setText(String.format(java.util.Locale.getDefault(), "%.0f MB", value));
+        } else { // GB
+            // For GB, allow one decimal place
+            tvDialogSelectedSize.setText(String.format(java.util.Locale.getDefault(), "%.1f GB", value));
+        }
+    }
 
     private void updateUploadButtonState() {
         if (btnDialogUpload == null || etDialogGameName == null || etDialogGameLink == null || etDialogManualGameSize == null || sbDialogGameSize == null) {
@@ -300,60 +331,23 @@ public class CommunityGamesFragment extends Fragment {
         boolean isSizeValid = false;
         String manualSizeStr = etDialogManualGameSize.getText().toString().trim();
         boolean isSizeValueValid = false;
-        if (!TextUtils.isEmpty(manualSizeStr) && isValidNumber(manualSizeStr)) {
+        if (isValidNumber(manualSizeStr)) {
             double value = Double.parseDouble(manualSizeStr);
             if (value > 0) {
                 isSizeValueValid = true;
             }
         }
-        // If manual input is empty or invalid, SeekBar must be > 0
-        // However, our logic now syncs manual input from seekbar,
-        // so primarily checking manualSizeStr is enough after sync.
-        // For initial state or if user clears etDialogManualGameSize, this check is important.
-        if (!isSizeValueValid && sbDialogGameSize.getProgress() > 0 && TextUtils.isEmpty(manualSizeStr)) {
-             // This case might occur if user clears manual field after using seekbar
-             // We can re-populate manual field from seekbar or just use its value
-             // For simplicity, let's assume manual field should be valid.
-        }
-
+        // If manual input is empty or invalid, consider if SeekBar value should enable.
+        // But since listeners sync them, etDialogManualGameSize should reflect SeekBar.
+        // So, valid numeric text > 0 in etDialogManualGameSize is the primary check.
 
         btnDialogUpload.setEnabled(!TextUtils.isEmpty(gameName) && !TextUtils.isEmpty(gameLink) && isSizeValueValid);
     }
 
-    private void updateSeekBarFromManualInput() {
-        String sizeValueStr = etDialogManualGameSize.getText().toString().trim();
-        if (!TextUtils.isEmpty(sizeValueStr) && isValidNumber(sizeValueStr)) {
-            double value = Double.parseDouble(sizeValueStr);
-            String selectedUnit = spinnerDialogSizeUnit.getSelectedItem().toString();
-            long bytes = 0;
-            if ("MB".equalsIgnoreCase(selectedUnit)) {
-                bytes = (long) (value * 1024 * 1024);
-            } else if ("GB".equalsIgnoreCase(selectedUnit)) {
-                bytes = (long) (value * 1024 * 1024 * 1024);
-            }
-
-            if (bytes > 0) {
-                double sizeInGB = (double) bytes / (1024L * 1024L * 1024L);
-                int progress = (int) Math.round(sizeInGB);
-                if (progress > sbDialogGameSize.getMax()) progress = sbDialogGameSize.getMax();
-
-                isSeekBarChanging = true; // Prevent SeekBar listener from re-triggering this
-                sbDialogGameSize.setProgress(progress);
-                tvDialogSelectedSize.setText(progress + " GB"); // Keep this consistent with SeekBar
-                isSeekBarChanging = false;
-            } else { // If value is 0 or negative, reset seekbar
-                 isSeekBarChanging = true;
-                 sbDialogGameSize.setProgress(0);
-                 tvDialogSelectedSize.setText("0 GB");
-                 isSeekBarChanging = false;
-            }
-        } else if (TextUtils.isEmpty(sizeValueStr)) { // If field is empty, reset seekbar
-            isSeekBarChanging = true;
-            sbDialogGameSize.setProgress(0);
-            tvDialogSelectedSize.setText("0 GB");
-            isSeekBarChanging = false;
-        }
-    }
+    // updateSeekBarFromManualInput was removed, logic integrated into listeners.
+    // Re-adding a refined version or ensuring listeners cover all sync.
+    // The TextWatcher for etDialogManualGameSize already updates the SeekBar.
+    // The Spinner's onItemSelected listener also updates the SeekBar based on current EditText value and new unit.
 
     private boolean isValidNumber(String str) {
         if (str == null || str.trim().isEmpty()) return false;
